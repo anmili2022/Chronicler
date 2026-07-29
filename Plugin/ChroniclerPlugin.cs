@@ -26,6 +26,9 @@ public sealed partial class ChroniclerPlugin : IDalamudPlugin
     private DateTime? pendingAutoReturnStartedUtc;
     private DateTime? pendingAutoReturnBaseCampUtc;
     private bool pendingAutoReturnSawBetweenAreas;
+    private bool wasDead;
+    private DateTime? postReturnIdleUtc;
+    private bool autoNavWasEnabled;
 
     public string Name => "新月岛史官";
 

@@ -124,6 +124,8 @@ internal sealed class VnavService : IDisposable
     private Vector3? pendingDismountTarget;
     private DateTime pendingDismountStartedUtc;
     private DateTime lastDismountAttemptUtc = DateTime.MinValue;
+    private bool pendingDismountArrivedLogged;
+    private bool pendingDismountFired;
     private Vector3? pendingTeleportTarget;
     private bool pendingTeleportFly;
     private Vector3 pendingTeleportSourcePos;
@@ -359,6 +361,8 @@ internal sealed class VnavService : IDisposable
 
         var snapped = nearestPoint.InvokeFunc(target, 5f, 5f);
         var finalTarget = snapped.HasValue ? snapped.Value : target;
+        if (pendingDismountTarget.HasValue)
+            pendingDismountTarget = finalTarget;
         DebugChat("导航调试: 传送完成，继续步行导航。");
         StartMove(finalTarget, fly);
     }
@@ -634,6 +638,9 @@ internal sealed class VnavService : IDisposable
         pendingDismountTarget = target;
         pendingDismountStartedUtc = DateTime.UtcNow;
         lastDismountAttemptUtc = DateTime.MinValue;
+        pendingDismountArrivedLogged = false;
+        pendingDismountFired = false;
+        LogHelper.Chat($"下坐骑: 已设置目标点 ({target.X:F1}, {target.Y:F1}, {target.Z:F1})");
     }
 
     private unsafe void ProcessPendingDismount()
@@ -643,7 +650,8 @@ internal sealed class VnavService : IDisposable
 
         if (!DalamudApi.Condition[ConditionFlag.Mounted])
         {
-            ClearPendingDismount();
+            if (pendingDismountFired)
+                ClearPendingDismount();
             return;
         }
 
@@ -655,19 +663,35 @@ internal sealed class VnavService : IDisposable
         }
 
         var playerPos = DalamudApi.ObjectTable.LocalPlayer?.Position;
-        if (!playerPos.HasValue || !IsWithinHorizontalRadius(playerPos.Value, pendingDismountTarget.Value, 8f))
+        if (!playerPos.HasValue)
             return;
 
-        if (now - lastDismountAttemptUtc < TimeSpan.FromSeconds(2))
+        var dist = HorizontalDistance(playerPos.Value, pendingDismountTarget.Value);
+        if (dist > 10f)
+            return;
+
+        if (!pendingDismountArrivedLogged)
+        {
+            pendingDismountArrivedLogged = true;
+            LogHelper.Chat($"已到达目标点附近({dist:F1}y)");
+        }
+
+        if (now - lastDismountAttemptUtc < TimeSpan.FromMilliseconds(500))
             return;
 
         lastDismountAttemptUtc = now;
+        pendingDismountFired = true;
         try { stop.InvokeAction(); } catch { }
-        ActionManager.Instance()->UseAction(ActionType.GeneralAction, 23);
-        DebugChat("导航调试: 到达魔法罐附近，自动下坐骑。");
+        ActionManager.Instance()->UseAction(ActionType.Mount, 0);
+        DebugChat($"导航调试: 到达目标附近({dist:F1}y)，自动下坐骑。");
     }
 
-    private void ClearPendingDismount() => pendingDismountTarget = null;
+    private void ClearPendingDismount()
+    {
+        pendingDismountTarget = null;
+        pendingDismountArrivedLogged = false;
+        pendingDismountFired = false;
+    }
 
     public unsafe void ReturnToBaseCamp()
     {

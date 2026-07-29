@@ -52,7 +52,28 @@ public sealed partial class ChroniclerPlugin
             autoNavigationReturned = false;
             autoReturnDueUtc = null;
             ClearAutoReturnGate();
+            wasDead = false;
+            postReturnIdleUtc = null;
+            autoNavWasEnabled = false;
             return;
+        }
+
+        if (!autoNavWasEnabled)
+        {
+            if (!DalamudApi.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.InCombat]
+                && !IsAtCampOrStandby(currentMap.Value))
+            {
+                autoNavWasEnabled = true;
+                LogHelper.Chat("全自动: 开启时不在营地，先回营地。");
+                vnav.ReturnToBaseCamp();
+                pendingAutoReturnMap = currentMap;
+                pendingAutoReturnStartedUtc = DateTime.UtcNow;
+                pendingAutoReturnBaseCampUtc = null;
+                pendingAutoReturnSawBetweenAreas = false;
+                return;
+            }
+
+            autoNavWasEnabled = true;
         }
 
         var now = DateTime.UtcNow;
@@ -60,6 +81,36 @@ public sealed partial class ChroniclerPlugin
             return;
 
         lastAutoNavigationUpdateUtc = now;
+
+        if (DalamudApi.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.Unconscious])
+        {
+            activeAutoNavigationKey = string.Empty;
+            ClearPendingAutoNavigation();
+            autoNavigationReturned = false;
+            autoReturnDueUtc = null;
+            ClearAutoReturnGate();
+            vnav.Stop();
+            wasDead = true;
+            postReturnIdleUtc = null;
+            return;
+        }
+
+        if (wasDead)
+        {
+            wasDead = false;
+            activeAutoNavigationKey = string.Empty;
+            ClearPendingAutoNavigation();
+            autoNavigationReturned = false;
+            autoReturnDueUtc = null;
+            ClearAutoReturnGate();
+            LogHelper.Chat("全自动: 已复活，返回营地重新扫描。");
+            vnav.ReturnToBaseCamp();
+            pendingAutoReturnMap = currentMap;
+            pendingAutoReturnStartedUtc = DateTime.UtcNow;
+            pendingAutoReturnBaseCampUtc = null;
+            pendingAutoReturnSawBetweenAreas = false;
+            return;
+        }
 
         if (DalamudApi.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.InCombat])
             return;
@@ -73,6 +124,23 @@ public sealed partial class ChroniclerPlugin
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(activeAutoNavigationKey))
+        {
+            if (!IsAtCampOrStandby(currentMap.Value))
+            {
+                postReturnIdleUtc = null;
+                return;
+            }
+
+            if (postReturnIdleUtc.HasValue)
+            {
+                if (DateTime.UtcNow - postReturnIdleUtc.Value < TimeSpan.FromSeconds(10))
+                    return;
+
+                postReturnIdleUtc = null;
+            }
+        }
+
         if (Configuration.AutoPrioritizeCe)
         {
             if (TryNavigateAutoCe(currentMap.Value) || TryNavigateAutoFate(currentMap.Value))
@@ -83,9 +151,6 @@ public sealed partial class ChroniclerPlugin
             if (TryNavigateAutoFate(currentMap.Value) || TryNavigateAutoCe(currentMap.Value))
                 return;
         }
-
-        ClearPendingAutoNavigation();
-        ReturnAfterAutoTargetEnds(currentMap.Value);
     }
 
     private void ClearPendingAutoNavigation()
@@ -136,7 +201,8 @@ public sealed partial class ChroniclerPlugin
             return true;
 
         ClearAutoReturnGate();
-        LogHelper.Chat("全自动: 已回到营地，恢复扫描目标。");
+        postReturnIdleUtc = DateTime.UtcNow;
+        LogHelper.Chat("全自动: 已回到营地，10 秒后开始扫描目标。");
         return false;
     }
 
@@ -203,7 +269,7 @@ public sealed partial class ChroniclerPlugin
                 if (activeAutoNavigationKey != key && ShouldSkipAutoTarget(fate.State == FateState.Running, fate.Progress))
                     continue;
 
-                NavigateAutoTargetOnce(key, $"FATE {boss.Abbreviation}", fate.Position, VnavService.GetPreferredShardIdForFate(fate.FateId), dismountOnArrival: BossCatalog.IsMagicPot(boss));
+                NavigateAutoTargetOnce(key, $"FATE {boss.Abbreviation}", fate.Position, VnavService.GetPreferredShardIdForFate(fate.FateId), dismountOnArrival: true);
                 return true;
             }
         }
@@ -379,5 +445,26 @@ public sealed partial class ChroniclerPlugin
         var dx = a.X - b.X;
         var dz = a.Z - b.Z;
         return MathF.Sqrt(dx * dx + dz * dz);
+    }
+
+    private bool IsAtCampOrStandby(ExpeditionMap map)
+    {
+        var playerPos = DalamudApi.ObjectTable.LocalPlayer?.Position;
+        if (!playerPos.HasValue)
+            return false;
+
+        var camp = GetBaseCampPosition(map);
+        if (HorizontalDistance(playerPos.Value, camp) <= 30f)
+            return true;
+
+        if (Configuration.HasAutoReturnStandbyPoint
+            && map == Configuration.AutoReturnStandbyMap)
+        {
+            var standby = new Vector3(Configuration.AutoReturnStandbyX, Configuration.AutoReturnStandbyY, Configuration.AutoReturnStandbyZ);
+            if (HorizontalDistance(playerPos.Value, standby) <= 30f)
+                return true;
+        }
+
+        return false;
     }
 }
