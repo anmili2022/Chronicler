@@ -15,6 +15,9 @@ public sealed class PluginConfiguration : IPluginConfiguration
     public bool ListenChat = true;
     public bool AutoDetectAppearances = true;
     public bool AutoNavigationEnabled = false;
+    public int AutoReturnDelaySeconds = 5;
+    public int AutoSkipProgressPercent = 80;
+    public bool AutoPrioritizeCe = true;
     public string AutoNavigationTargetType = string.Empty;
     public uint AutoNavigationTargetId = 0;
     public string AutoNavigationTargetName = string.Empty;

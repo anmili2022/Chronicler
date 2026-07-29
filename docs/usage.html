@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>新月岛史官 - 功能与使用说明</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      line-height: 1.65;
+      color: #d9e2ef;
+      background: #111827;
+    }
+    main {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 32px 20px 56px;
+    }
+    h1, h2 {
+      color: #f8fafc;
+      line-height: 1.25;
+    }
+    h1 {
+      margin-bottom: 8px;
+      font-size: 32px;
+    }
+    h2 {
+      margin-top: 34px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #334155;
+      font-size: 22px;
+    }
+    p, li {
+      font-size: 15px;
+    }
+    a {
+      color: #7dd3fc;
+    }
+    code {
+      padding: 2px 5px;
+      border-radius: 4px;
+      background: #1f2937;
+      color: #fde68a;
+    }
+    .card {
+      margin: 18px 0;
+      padding: 16px 18px;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      background: #172033;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 14px;
+    }
+    .muted {
+      color: #94a3b8;
+    }
+    .tag {
+      display: inline-block;
+      margin: 4px 6px 4px 0;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: #0f766e;
+      color: #ecfeff;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>新月岛史官</h1>
+  <p class="muted">插件版本：<strong>v0.2.0.2</strong></p>
+  <p class="muted">本地记录新月岛南征/北征 CE 与 FATE 出现时间，支持 xyd 分享码、喊话同步、悬浮窗和自动导航。</p>
+
+  <div class="card">
+    <span class="tag">Dalamud API 15</span>
+    <span class="tag">Crescent Isle</span>
+    <span class="tag">xyd 兼容</span>
+    <span class="tag">vnavmesh</span>
+    <span class="tag">Lifestream</span>
+  </div>
+
+  <h2>主要功能</h2>
+  <div class="grid">
+    <div class="card">
+      <strong>出现时间记录</strong>
+      <p>自动或手动记录南征、北征 Boss 的出现时间，按本地时间显示为 <code>HH:mm</code>。</p>
+    </div>
+    <div class="card">
+      <strong>xyd 分享码</strong>
+      <p>支持导入和导出 <code>xyd.zzmelon.com</code> 分享码，并生成普通喊话和离岛喊话。</p>
+    </div>
+    <div class="card">
+      <strong>聊天同步</strong>
+      <p>监听游戏聊天中的分享码或史官喊话，自动同步本地记录，不会自动发公频。</p>
+    </div>
+    <div class="card">
+      <strong>悬浮窗</strong>
+      <p>显示当前 <code>FateTable</code> FATE 和 <code>DynamicEventContainer</code> CE，并提供导航、回营地和全自动开关。</p>
+    </div>
+    <div class="card">
+      <strong>全自动导航</strong>
+      <p>可勾选目标列表，目标出现后自动导航；目标结束后按设置延迟返回营地。</p>
+    </div>
+    <div class="card">
+      <strong>调试采集</strong>
+      <p>提供已观测 FATE、CE 动态事件、当前 FateTable、附近 EventObj 等调试数据。</p>
+    </div>
+  </div>
+
+  <h2>依赖插件</h2>
+  <ul>
+    <li><strong>vnavmesh</strong>：用于自动寻路。</li>
+    <li><strong>Lifestream</strong>：用于新月岛传送点传送。</li>
+  </ul>
+  <p>没有安装依赖时，记录、分享码和聊天同步仍可使用；自动导航相关功能会受限。</p>
+
+  <h2>基本使用</h2>
+  <ol>
+    <li>进入新月岛后打开设置窗口：<code>/shiguan</code> 或 <code>/史官</code>。</li>
+    <li>确认顶部显示的地图识别为南征或北征。</li>
+    <li>需要自动记录时，保持 <code>自动记录出现</code> 开启。</li>
+    <li>需要同步别人喊话时，保持 <code>监听聊天同步</code> 开启。</li>
+    <li>使用 <code>生成喊话</code>、<code>生成出岛喊话</code>、<code>生成分享码</code> 输出当前记录。</li>
+    <li>将分享码或喊话粘贴进导入框，点击 <code>应用导入</code> 可同步记录。</li>
+  </ol>
+
+  <h2>全自动导航设置</h2>
+  <ul>
+    <li><code>全自动模式</code>：开启后自动扫描满足条件的 FATE/CE 并导航。</li>
+    <li><code>结束后回营地延迟(秒)</code>：目标结束后等待指定秒数再回营地，默认 5 秒。</li>
+    <li><code>战斗进度>=X%不前往</code>：目标已经开战且进度达到阈值时，不再新出发，默认 80%。</li>
+    <li><code>优先 CE</code>：默认开启；CE 和 FATE 同时满足条件时优先前往 CE。关闭后优先 FATE。</li>
+    <li><code>CE/FATE 全选或全不选</code>：批量控制全自动目标列表。</li>
+  </ul>
+  <p>CE 导航会在 CE 范围内随机选择一个可走坐标，而不是固定导航到圆心。</p>
+
+  <h2>悬浮窗</h2>
+  <ul>
+    <li>显示当前活动 FATE 与 CE。</li>
+    <li>点击 <code>导航</code> 可手动前往目标。</li>
+    <li>点击 <code>回营地</code> 会触发亚返回，并自动确认返回弹窗。</li>
+    <li>右键悬浮窗可打开或关闭主设置窗口。</li>
+  </ul>
+
+  <h2>调试与数据采集</h2>
+  <p>勾选 <code>显示调试区</code> 后，可以查看：</p>
+  <ul>
+    <li><code>已观测 FATE</code>：记录所有在当前地图看到过的 FateTable 行。</li>
+    <li><code>CE 动态事件记录</code>：记录 DynamicEventContainer 中出现过的 CE 数据。</li>
+    <li><code>FATE/CE 调试区</code>：显示当前 FateTable、传送点检测和附近 EventObj 扫描。</li>
+  </ul>
+
+  <h2>北征资料链接</h2>
+  <p>设置窗口中提供 <code>新月岛：北征之章 信息整理</code> 按钮，可打开以下资料：</p>
+  <p><a href="https://bbs.nga.cn/read.php?tid=47269383">https://bbs.nga.cn/read.php?tid=47269383</a></p>
+
+  <h2>注意事项</h2>
+  <ul>
+    <li>分享码兼容依赖固定的 17 格 Boss 顺序，不应随意调整主 Boss 列表顺序。</li>
+    <li>新增北征普通 FATE 只用于 FATE 折叠栏和自动导航，不影响 xyd 分享码。</li>
+    <li>导航调试关闭时，普通导航步骤不会刷屏；失败和异常仍会提示。</li>
+    <li>如果传送点或坐标异常，先打开 <code>导航调试</code> 查看目标坐标和选中的传送点。</li>
+  </ul>
+</main>
+</body>
+</html>

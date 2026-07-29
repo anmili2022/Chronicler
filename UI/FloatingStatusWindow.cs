@@ -97,7 +97,7 @@ internal sealed class FloatingStatusWindow : Window
         return flags;
     }
 
-    private unsafe void DrawFlagNavButton(Vector3 pos, string id)
+    private unsafe void DrawFlagNavButton(Vector3 pos, string id, uint? preferredShardId = null, float? randomRadius = null)
     {
         if (vnav.IsReady)
         {
@@ -105,7 +105,10 @@ internal sealed class FloatingStatusWindow : Window
             {
                 if (config.ShowNavigationDebug)
                     LogHelper.Chat($"导航调试: 开始导航到 ({pos.X:F1}, {pos.Y:F1}, {pos.Z:F1})");
-                vnav.NavigateTo(pos);
+                if (randomRadius.HasValue)
+                    vnav.NavigateToRandomInRadius(pos, randomRadius.Value, preferredShardId: preferredShardId);
+                else
+                    vnav.NavigateTo(pos, preferredShardId: preferredShardId);
             }
         }
     }
@@ -132,7 +135,7 @@ internal sealed class FloatingStatusWindow : Window
             ImGui.SameLine();
             ImGui.TextUnformatted($"{FormatFateState(fate.State)} {fate.Progress}% {FormatSeconds(fate.TimeRemaining)}");
             ImGui.SameLine();
-            DrawFlagNavButton(fate.Position, $"fate-{fate.FateId}");
+            DrawFlagNavButton(fate.Position, $"fate-{fate.FateId}", VnavService.GetPreferredShardIdForFate(fate.FateId));
         }
 
         return true;
@@ -163,7 +166,7 @@ internal sealed class FloatingStatusWindow : Window
             ImGui.SameLine();
             ImGui.TextUnformatted($"{FormatCeState(ev.State)} {ev.Progress}% {FormatSeconds(ev.SecondsLeft)}");
             ImGui.SameLine();
-            DrawFlagNavButton(new Vector3(ev.MapMarker.Position.X, 0, ev.MapMarker.Position.Y), $"ce-{ev.DynamicEventId}");
+            DrawFlagNavButton(ev.MapMarker.Position, $"ce-{ev.DynamicEventId}", randomRadius: ev.MapMarker.Radius);
         }
 
         return true;

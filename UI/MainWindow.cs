@@ -20,7 +20,7 @@ internal sealed class MainWindow : Window
     private const int MaxDebugRows = 50;
 
     public MainWindow(PluginConfiguration config, CrescentStateService state, VnavService vnav)
-        : base("新月岛史官")
+        : base($"新月岛史官 v{GetVersionText()}")
     {
         this.config = config;
         this.state = state;
@@ -31,6 +31,9 @@ internal sealed class MainWindow : Window
         Size = new Vector2(760f, 640f);
         SizeCondition = ImGuiCond.FirstUseEver;
     }
+
+    private static string GetVersionText()
+        => typeof(ChroniclerPlugin).Assembly.GetName().Version?.ToString() ?? "unknown";
 
     public override void Draw()
     {
@@ -235,6 +238,24 @@ internal sealed class MainWindow : Window
             config.Save();
         }
 
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(90f);
+        var autoReturnDelaySeconds = Math.Max(0, config.AutoReturnDelaySeconds);
+        if (ImGui.InputInt("结束后回营地延迟(秒)", ref autoReturnDelaySeconds))
+        {
+            config.AutoReturnDelaySeconds = Math.Clamp(autoReturnDelaySeconds, 0, 600);
+            config.Save();
+        }
+
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(90f);
+        var autoSkipProgressPercent = Math.Clamp(config.AutoSkipProgressPercent, 0, 100);
+        if (ImGui.InputInt("战斗进度≥X%不前往", ref autoSkipProgressPercent))
+        {
+            config.AutoSkipProgressPercent = Math.Clamp(autoSkipProgressPercent, 0, 100);
+            config.Save();
+        }
+
         if (!ImGui.CollapsingHeader("自动寻路"))
             return;
 
@@ -254,6 +275,13 @@ internal sealed class MainWindow : Window
         DrawAutoTargetBulkToggle("CE", ceBosses.Select(boss => (uint)boss.Index));
         ImGui.SameLine();
         DrawAutoTargetBulkToggle("FATE", fateBosses.Select(boss => (uint)boss.FateId!.Value));
+        ImGui.SameLine();
+        var autoPrioritizeCe = config.AutoPrioritizeCe;
+        if (ImGui.Checkbox("优先 CE", ref autoPrioritizeCe))
+        {
+            config.AutoPrioritizeCe = autoPrioritizeCe;
+            config.Save();
+        }
 
         if (ImGui.CollapsingHeader("CE##auto_ce_targets", ImGuiTreeNodeFlags.DefaultOpen))
             DrawAutoCeTargetTable(ceBosses, content);

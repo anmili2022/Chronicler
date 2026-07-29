@@ -1,9 +1,12 @@
 using System.Numerics;
+using Dalamud.Game.Addon.Lifecycle;
+using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using FFXIVClientStructs.FFXIV.Component.GUI;
 
 namespace Chronicler;
 
@@ -68,6 +71,7 @@ internal sealed class VnavService : IDisposable
         }
 
         DalamudApi.Framework.Update += OnFrameworkUpdate;
+        DalamudApi.AddonLifecycle.RegisterListener(AddonEvent.PostSetup, "SelectYesno", OnSelectYesnoPostSetup);
     }
 
     private Vector3? pendingTarget;
@@ -88,6 +92,8 @@ internal sealed class VnavService : IDisposable
     private DateTime pendingTeleportStartedUtc;
     private DateTime lastTeleportCheckUtc = DateTime.MinValue;
     private DateTime lastTeleportDebugUtc = DateTime.MinValue;
+    private bool pendingReturnConfirm;
+    private DateTime pendingReturnConfirmStartedUtc;
 
     public bool IsReady
     {
@@ -100,7 +106,10 @@ internal sealed class VnavService : IDisposable
 
     public bool IsLifestreamAvailable => lifestreamAvailable;
 
-    public unsafe void NavigateTo(Vector3 dest, bool fly = false)
+    public static uint? GetPreferredShardIdForFate(ushort fateId)
+        => fateId == 2075 ? 69420406u : null;
+
+    public unsafe void NavigateTo(Vector3 dest, bool fly = false, uint? preferredShardId = null)
     {
         ClearPendingNavigation();
 
@@ -124,7 +133,8 @@ internal sealed class VnavService : IDisposable
                     }
 
                     var map = currentMap.Value;
-                    var nearest = FindNearestShard(map, target);
+                    var nearest = preferredShardId.HasValue ? FindShardById(map, preferredShardId.Value) : FindNearestShard(map, target);
+                    nearest ??= FindNearestShard(map, target);
                     if (nearest.HasValue && nearest.Value.Id != 0)
                     {
                         var distToShard = Vector3.Distance(playerPos.Value, nearest.Value.Pos);
@@ -155,6 +165,53 @@ internal sealed class VnavService : IDisposable
         {
             LogHelper.Warning(ex, "vnav 导航失败，请确认已安装 vnavmesh 插件并已加载 navmesh。");
         }
+    }
+
+    public void NavigateToRandomInRadius(Vector3 center, float radius, bool fly = false, uint? preferredShardId = null)
+    {
+        NavigateTo(PickRandomPointInRadius(center, radius), fly, preferredShardId);
+    }
+
+    private Vector3 PickRandomPointInRadius(Vector3 center, float radius)
+    {
+        if (radius <= 0f)
+            return center;
+
+        var safeRadius = Math.Max(1f, radius - 5f);
+        for (var i = 0; i < 16; i++)
+        {
+            var angle = Random.Shared.NextDouble() * Math.Tau;
+            var distance = Math.Sqrt(Random.Shared.NextDouble()) * safeRadius;
+            var candidate = new Vector3(
+                center.X + (float)Math.Cos(angle) * (float)distance,
+                center.Y,
+                center.Z + (float)Math.Sin(angle) * (float)distance);
+
+            var snapped = SnapToNavmesh(candidate);
+            if (IsWithinHorizontalRadius(snapped, center, radius))
+                return snapped;
+        }
+
+        return center;
+    }
+
+    private Vector3 SnapToNavmesh(Vector3 point)
+    {
+        try
+        {
+            return nearestPoint.InvokeFunc(point, 5f, 5f) ?? point;
+        }
+        catch
+        {
+            return point;
+        }
+    }
+
+    private static bool IsWithinHorizontalRadius(Vector3 point, Vector3 center, float radius)
+    {
+        var dx = point.X - center.X;
+        var dz = point.Z - center.Z;
+        return dx * dx + dz * dz <= radius * radius;
     }
 
     private void WaitAndNavigate(Vector3 target, bool fly)
@@ -469,6 +526,17 @@ internal sealed class VnavService : IDisposable
         return best;
     }
 
+    private static (Vector3 Pos, uint Id, bool IsPlaceNameId)? FindShardById(ExpeditionMap map, uint id)
+    {
+        foreach (var s in Shards.Where(s => s.Map == map))
+        {
+            if (s.Id == id)
+                return (s.Pos, s.Id, s.IsPlaceNameId);
+        }
+
+        return null;
+    }
+
     /// <summary>检测当前所在传送点的 PlaceNameId（需已安装 Lifestream）。</summary>
     public uint? GetCurrentAetheryteId()
     {
@@ -493,6 +561,8 @@ internal sealed class VnavService : IDisposable
 
         try
         {
+            pendingReturnConfirm = true;
+            pendingReturnConfirmStartedUtc = DateTime.UtcNow;
             ActionManager.Instance()->UseAction(ActionType.GeneralAction, 8);
             DebugChat("导航调试: 使用亚返回回营地。");
         }
@@ -503,9 +573,28 @@ internal sealed class VnavService : IDisposable
         }
     }
 
+    private unsafe void OnSelectYesnoPostSetup(AddonEvent type, AddonArgs args)
+    {
+        _ = type;
+        if (!pendingReturnConfirm || DateTime.UtcNow - pendingReturnConfirmStartedUtc > TimeSpan.FromSeconds(8))
+        {
+            pendingReturnConfirm = false;
+            return;
+        }
+
+        var addon = (AtkUnitBase*)args.Addon.Address;
+        if (addon == null || !addon->IsVisible)
+            return;
+
+        pendingReturnConfirm = false;
+        addon->FireCallbackInt(0);
+        DebugChat("导航调试: 已确认回营地。");
+    }
+
     public void Dispose()
     {
         DalamudApi.Framework.Update -= OnFrameworkUpdate;
+        DalamudApi.AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, "SelectYesno", OnSelectYesnoPostSetup);
         ClearPendingNavigation();
         ClearPendingTeleport();
         ClearPendingMove();

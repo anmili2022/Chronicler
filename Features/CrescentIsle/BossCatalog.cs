@@ -40,8 +40,23 @@ internal static class BossCatalog
         CreateCe(ExpeditionMap.North, 113, 12, "提蔛", "四颚斧花--提蔛", "Lv.46 新月瓦魔蛾 x:4.0, y:10.2"),
         CreateCe(ExpeditionMap.North, 114, 13, "赤龙", "暗红尸骸--赤龙", "Lv.34 大角牛 x:7.7, y:24.4"),
         CreateCe(ExpeditionMap.North, 115, 14, "阿剌克涅", "残暴的母蜘蛛--新月阿剌克涅", "待收集 x:24.8, y:18.6(推测)", "新月阿剌克涅"),
-        CreateFate(ExpeditionMap.North, 116, 15, "左下罐", "被吹飞的魔法罐（左下罐）", "待收集 x:11.3, y:26.2", "被吹飞的魔法罐"),
-        CreateFate(ExpeditionMap.North, 117, 16, "右上罐", "被欺负的魔法罐（右上罐）", "待收集 x:26.1, y:12.1", "被欺负的魔法罐"),
+        CreateFate(ExpeditionMap.North, 116, 15, 2073, "左下罐", "被吹飞的魔法罐（左下罐）", "待收集 x:11.3, y:26.2", "被吹飞的魔法罐"),
+        CreateFate(ExpeditionMap.North, 117, 16, 2072, "右上罐", "被欺负的魔法罐（右上罐）", "待收集 x:26.1, y:12.1", "被欺负的魔法罐"),
+    ];
+
+    private static readonly IReadOnlyList<BossEntry> ExtraNorthFates =
+    [
+        CreateFate(ExpeditionMap.North, 2074, 2074, 2074, "牛魔", "暴力牛魔——好战弥诺陶洛斯", "FATE x:36.2, y:11.0", "好战弥诺陶洛斯"),
+        CreateFate(ExpeditionMap.North, 2083, 2083, 2083, "美杜莎", "仿制的蛇人偶——半灵美杜莎", "FATE x:6.9, y:34.2", "半灵美杜莎"),
+        CreateFate(ExpeditionMap.North, 2076, 2076, 2076, "奇美拉", "水边暴君——统领奇美拉", "FATE x:23.8, y:10.7", "统领奇美拉"),
+        CreateFate(ExpeditionMap.North, 2082, 2082, 2082, "狮鹫", "驾驭自然的巨兽——呼风狮鹫", "FATE x:7.2, y:24.1", "呼风狮鹫"),
+        CreateFate(ExpeditionMap.North, 2080, 2080, 2080, "冰狼", "狼占狗窝——遗迹冰狼", "FATE x:19.5, y:38.3", "遗迹冰狼"),
+        CreateFate(ExpeditionMap.North, 2075, 2075, 2075, "邪瞳", "诅咒宝珠——邪瞳", "FATE x:31.5, y:20.4", "邪瞳"),
+        CreateFate(ExpeditionMap.North, 2081, 2081, 2081, "恶耐基", "腐坏街道的守护者——恶耐基", "FATE x:10.0, y:32.9", "恶耐基"),
+        CreateFate(ExpeditionMap.North, 2084, 2084, 2084, "雷兽", "高傲的雷兽——新月女王", "FATE x:27.0, y:2.9", "新月女王"),
+        CreateFate(ExpeditionMap.North, 2077, 2077, 2077, "水马", "历战水马——凯尔派总领", "FATE x:26.5, y:20.9", "凯尔派总领"),
+        CreateFate(ExpeditionMap.North, 2079, 2079, 2079, "伊阿姆柏", "自怨自艾的歌手——伊阿姆柏", "FATE x:16.5, y:24.0", "伊阿姆柏"),
+        CreateFate(ExpeditionMap.North, 2078, 2078, 2078, "珊迪", "魔界的叹息——妖艳魔花珊迪", "FATE x:9.9, y:27.6", "妖艳魔花珊迪"),
     ];
 
     public static IReadOnlyList<BossEntry> GetBosses(ExpeditionMap map)
@@ -51,7 +66,9 @@ internal static class BossCatalog
         => GetBosses(map).Where(boss => boss.Kind == BossEventKind.CriticalEncounter);
 
     public static IEnumerable<BossEntry> GetFates(ExpeditionMap map)
-        => GetBosses(map).Where(boss => boss.Kind == BossEventKind.Fate);
+        => map == ExpeditionMap.North
+            ? GetBosses(map).Where(boss => boss.Kind == BossEventKind.Fate).Concat(ExtraNorthFates)
+            : GetBosses(map).Where(boss => boss.Kind == BossEventKind.Fate);
 
     public static BossEntry? FindByAbbreviation(ExpeditionMap map, string abbreviation)
         => GetBosses(map).FirstOrDefault(boss => boss.Abbreviation == abbreviation);
@@ -95,6 +112,9 @@ internal static class BossCatalog
 
     private static BossEntry CreateFate(ExpeditionMap map, int id, int index, string abbreviation, string name, string trigger, params string[] aliases)
         => Create(map, id, index, BossEventKind.Fate, abbreviation, name, trigger, (ushort?)index, aliases);
+
+    private static BossEntry CreateFate(ExpeditionMap map, int id, int index, ushort fateId, string abbreviation, string name, string trigger, params string[] aliases)
+        => Create(map, id, index, BossEventKind.Fate, abbreviation, name, trigger, fateId, aliases);
 
     private static BossEntry Create(ExpeditionMap map, int id, int index, BossEventKind kind, string abbreviation, string name, string trigger, ushort? fateId, params string[] aliases)
     {
