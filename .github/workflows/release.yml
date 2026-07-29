@@ -26,7 +26,12 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($ver)) {
             throw 'Release version is empty.'
           }
+          $assemblyVer = $ver
+          if ($assemblyVer.StartsWith('v')) {
+            $assemblyVer = $assemblyVer.Substring(1)
+          }
           "RELEASE_VERSION=$ver" >> $env:GITHUB_ENV
+          "ASSEMBLY_VERSION=$assemblyVer" >> $env:GITHUB_ENV
 
       - name: Checkout
         uses: actions/checkout@v5
@@ -69,9 +74,9 @@ jobs:
             --no-restore `
             --nologo `
             -p:DalamudLibPath="$dalamudPath" `
-            -p:Version="$env:RELEASE_VERSION" `
-            -p:FileVersion="$env:RELEASE_VERSION" `
-            -p:AssemblyVersion="$env:RELEASE_VERSION"
+            -p:Version="$env:ASSEMBLY_VERSION" `
+            -p:FileVersion="$env:ASSEMBLY_VERSION" `
+            -p:AssemblyVersion="$env:ASSEMBLY_VERSION"
 
       - name: Update output manifest version
         shell: pwsh
@@ -81,7 +86,7 @@ jobs:
               continue
             }
             $json = Get-Content -Raw -Encoding UTF8 $path | ConvertFrom-Json
-            $json.AssemblyVersion = $env:RELEASE_VERSION
+            $json.AssemblyVersion = $env:ASSEMBLY_VERSION
             $json | ConvertTo-Json -Depth 10 | Set-Content -Path $path -Encoding utf8
           }
 
