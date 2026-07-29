@@ -121,6 +121,9 @@ internal sealed class VnavService : IDisposable
     private DateTime pendingMoveStartedUtc;
     private DateTime lastMoveCheckUtc = DateTime.MinValue;
     private DateTime lastMountAttemptUtc = DateTime.MinValue;
+    private Vector3? pendingDismountTarget;
+    private DateTime pendingDismountStartedUtc;
+    private DateTime lastDismountAttemptUtc = DateTime.MinValue;
     private Vector3? pendingTeleportTarget;
     private bool pendingTeleportFly;
     private Vector3 pendingTeleportSourcePos;
@@ -131,6 +134,12 @@ internal sealed class VnavService : IDisposable
     private DateTime lastTeleportDebugUtc = DateTime.MinValue;
     private bool pendingReturnConfirm;
     private DateTime pendingReturnConfirmStartedUtc;
+    private Vector3? pendingReturnNavigationTarget;
+    private ExpeditionMap pendingReturnNavigationMap;
+    private DateTime pendingReturnNavigationStartedUtc;
+    private DateTime? pendingReturnNavigationBaseCampUtc;
+    private bool pendingReturnNavigationSawBetweenAreas;
+    private DateTime? pendingReturnNavigationConfirmedUtc;
 
     public bool IsReady
     {
@@ -165,7 +174,7 @@ internal sealed class VnavService : IDisposable
     public static uint? GetPreferredShardIdForCriticalEncounter(ExpeditionMap map, int bossIndex)
         => map == ExpeditionMap.North && bossIndex == 3 ? 69420406u : null;
 
-    public unsafe void NavigateTo(Vector3 dest, bool fly = false, uint? preferredShardId = null)
+    public unsafe void NavigateTo(Vector3 dest, bool fly = false, uint? preferredShardId = null, bool dismountOnArrival = false)
     {
         ClearPendingNavigation();
         TryInitializeLifestream();
@@ -176,6 +185,8 @@ internal sealed class VnavService : IDisposable
             var snapped = nearestPoint.InvokeFunc(dest, 5f, 5f);
             if (snapped.HasValue)
                 target = snapped.Value;
+
+            ConfigureDismountOnArrival(target, dismountOnArrival);
 
             if (aethernetTeleportById != null || aethernetTeleportByPlaceNameId != null)
             {
@@ -224,9 +235,9 @@ internal sealed class VnavService : IDisposable
         }
     }
 
-    public void NavigateToRandomInRadius(Vector3 center, float radius, bool fly = false, uint? preferredShardId = null)
+    public void NavigateToRandomInRadius(Vector3 center, float radius, bool fly = false, uint? preferredShardId = null, bool dismountOnArrival = false)
     {
-        NavigateTo(PickRandomPointInRadius(center, radius), fly, preferredShardId);
+        NavigateTo(PickRandomPointInRadius(center, radius), fly, preferredShardId, dismountOnArrival);
     }
 
     private Vector3 PickRandomPointInRadius(Vector3 center, float radius)
@@ -284,6 +295,8 @@ internal sealed class VnavService : IDisposable
         _ = framework;
         ProcessPendingMove();
         ProcessPendingTeleport();
+        ProcessPendingReturnNavigation();
+        ProcessPendingDismount();
 
         if (!pendingTarget.HasValue)
             return;
@@ -604,14 +617,64 @@ internal sealed class VnavService : IDisposable
         ClearPendingNavigation();
         ClearPendingTeleport();
         ClearPendingMove();
+        ClearPendingReturnNavigation();
+        ClearPendingDismount();
         try { stop.InvokeAction(); }
         catch { }
     }
+
+    private void ConfigureDismountOnArrival(Vector3 target, bool dismountOnArrival)
+    {
+        if (!dismountOnArrival)
+        {
+            ClearPendingDismount();
+            return;
+        }
+
+        pendingDismountTarget = target;
+        pendingDismountStartedUtc = DateTime.UtcNow;
+        lastDismountAttemptUtc = DateTime.MinValue;
+    }
+
+    private unsafe void ProcessPendingDismount()
+    {
+        if (!pendingDismountTarget.HasValue)
+            return;
+
+        if (!DalamudApi.Condition[ConditionFlag.Mounted])
+        {
+            ClearPendingDismount();
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        if (now - pendingDismountStartedUtc > TimeSpan.FromMinutes(10))
+        {
+            ClearPendingDismount();
+            return;
+        }
+
+        var playerPos = DalamudApi.ObjectTable.LocalPlayer?.Position;
+        if (!playerPos.HasValue || !IsWithinHorizontalRadius(playerPos.Value, pendingDismountTarget.Value, 8f))
+            return;
+
+        if (now - lastDismountAttemptUtc < TimeSpan.FromSeconds(2))
+            return;
+
+        lastDismountAttemptUtc = now;
+        try { stop.InvokeAction(); } catch { }
+        ActionManager.Instance()->UseAction(ActionType.GeneralAction, 23);
+        DebugChat("导航调试: 到达魔法罐附近，自动下坐骑。");
+    }
+
+    private void ClearPendingDismount() => pendingDismountTarget = null;
 
     public unsafe void ReturnToBaseCamp()
     {
         ClearPendingNavigation();
         ClearPendingMove();
+        ClearPendingReturnNavigation();
+        ClearPendingDismount();
         try { stop.InvokeAction(); } catch { }
 
         try
@@ -626,6 +689,91 @@ internal sealed class VnavService : IDisposable
             LogHelper.Warning(ex, "使用亚返回失败。");
             LogHelper.Chat($"使用亚返回失败: {ex.Message}");
         }
+    }
+
+    public void ReturnToBaseCampThenNavigateTo(Vector3 target, ExpeditionMap map)
+    {
+        ReturnToBaseCamp();
+        pendingReturnNavigationTarget = target;
+        pendingReturnNavigationMap = map;
+        pendingReturnNavigationStartedUtc = DateTime.UtcNow;
+        pendingReturnNavigationBaseCampUtc = null;
+        pendingReturnNavigationSawBetweenAreas = false;
+        pendingReturnNavigationConfirmedUtc = null;
+        LogHelper.Chat("回营地后将前往待命点。");
+    }
+
+    private void ProcessPendingReturnNavigation()
+    {
+        if (!pendingReturnNavigationTarget.HasValue)
+            return;
+
+        var now = DateTime.UtcNow;
+        if (now - pendingReturnNavigationStartedUtc > TimeSpan.FromSeconds(45))
+        {
+            ClearPendingReturnNavigation();
+            LogHelper.Chat("等待回营地超时，取消前往待命点。");
+            return;
+        }
+
+        if (now - pendingReturnNavigationStartedUtc < TimeSpan.FromSeconds(8))
+            return;
+
+        if (DalamudApi.Condition[ConditionFlag.BetweenAreas]
+            || DalamudApi.Condition[ConditionFlag.BetweenAreas51])
+        {
+            pendingReturnNavigationSawBetweenAreas = true;
+            return;
+        }
+
+        var confirmedLongEnough = pendingReturnNavigationConfirmedUtc.HasValue
+                                  && now - pendingReturnNavigationConfirmedUtc.Value >= TimeSpan.FromSeconds(8);
+        if (!pendingReturnNavigationSawBetweenAreas && !confirmedLongEnough)
+            return;
+
+        var currentMap = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, config);
+        if (currentMap != pendingReturnNavigationMap)
+            return;
+
+        var playerPos = DalamudApi.ObjectTable.LocalPlayer?.Position;
+        if (!playerPos.HasValue)
+            return;
+
+        if (HorizontalDistance(playerPos.Value, GetBaseCampPosition(pendingReturnNavigationMap)) > 80f)
+        {
+            pendingReturnNavigationBaseCampUtc = null;
+            return;
+        }
+
+        pendingReturnNavigationBaseCampUtc ??= now;
+        if (now - pendingReturnNavigationBaseCampUtc.Value < TimeSpan.FromSeconds(2))
+            return;
+
+        var target = pendingReturnNavigationTarget.Value;
+        ClearPendingReturnNavigation();
+        try { stop.InvokeAction(); } catch { }
+        LogHelper.Chat("前往待命点。");
+        NavigateTo(target);
+    }
+
+    private void ClearPendingReturnNavigation()
+    {
+        pendingReturnNavigationTarget = null;
+        pendingReturnNavigationBaseCampUtc = null;
+        pendingReturnNavigationSawBetweenAreas = false;
+        pendingReturnNavigationConfirmedUtc = null;
+    }
+
+    private static Vector3 GetBaseCampPosition(ExpeditionMap map)
+        => map == ExpeditionMap.North
+            ? new Vector3(880.00f, 259.74f, 880.06f)
+            : new Vector3(830.75f, 72.98f, -695.98f);
+
+    private static float HorizontalDistance(Vector3 a, Vector3 b)
+    {
+        var dx = a.X - b.X;
+        var dz = a.Z - b.Z;
+        return MathF.Sqrt(dx * dx + dz * dz);
     }
 
     private unsafe void OnSelectYesnoPostSetup(AddonEvent type, AddonArgs args)
@@ -643,6 +791,8 @@ internal sealed class VnavService : IDisposable
 
         pendingReturnConfirm = false;
         addon->FireCallbackInt(0);
+        if (pendingReturnNavigationTarget.HasValue)
+            pendingReturnNavigationConfirmedUtc = DateTime.UtcNow;
         DebugChat("导航调试: 已确认回营地。");
     }
 
@@ -653,5 +803,6 @@ internal sealed class VnavService : IDisposable
         ClearPendingNavigation();
         ClearPendingTeleport();
         ClearPendingMove();
+        ClearPendingReturnNavigation();
     }
 }

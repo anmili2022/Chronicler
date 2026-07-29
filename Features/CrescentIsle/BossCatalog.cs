@@ -107,6 +107,12 @@ internal static class BossCatalog
                || boss.Name.Equals(eventName, StringComparison.Ordinal);
     }
 
+    public static bool IsMagicPot(BossEntry boss)
+        => boss.Kind == BossEventKind.Fate && boss.ObjectNameAliases.Any(alias => alias.Contains("魔法罐", StringComparison.Ordinal));
+
+    public static bool IsMagicPotFateId(ushort fateId)
+        => fateId is 15 or 16 or 2072 or 2073;
+
     private static BossEntry CreateCe(ExpeditionMap map, int id, int index, string abbreviation, string name, string trigger, params string[] aliases)
         => Create(map, id, index, BossEventKind.CriticalEncounter, abbreviation, name, trigger, null, aliases);
 

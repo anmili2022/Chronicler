@@ -72,7 +72,17 @@ internal sealed class FloatingStatusWindow : Window
                 vnav.Stop();
             ImGui.SameLine();
             if (ImGui.SmallButton("回营地"))
-                vnav.ReturnToBaseCamp();
+            {
+                if (config.HasAutoReturnStandbyPoint)
+                {
+                    var target = new Vector3(config.AutoReturnStandbyX, config.AutoReturnStandbyY, config.AutoReturnStandbyZ);
+                    vnav.ReturnToBaseCampThenNavigateTo(target, config.AutoReturnStandbyMap);
+                }
+                else
+                {
+                    vnav.ReturnToBaseCamp();
+                }
+            }
             ImGui.SameLine();
             if (ImGui.SmallButton(config.AutoNavigationEnabled ? "全自动: 开" : "全自动: 关"))
             {
@@ -97,7 +107,7 @@ internal sealed class FloatingStatusWindow : Window
         return flags;
     }
 
-    private unsafe void DrawFlagNavButton(Vector3 pos, string id, uint? preferredShardId = null, float? randomRadius = null)
+    private unsafe void DrawFlagNavButton(Vector3 pos, string id, uint? preferredShardId = null, float? randomRadius = null, bool dismountOnArrival = false)
     {
         if (vnav.IsReady)
         {
@@ -106,9 +116,9 @@ internal sealed class FloatingStatusWindow : Window
                 if (config.ShowNavigationDebug)
                     LogHelper.Chat($"导航调试: 开始导航到 ({pos.X:F1}, {pos.Y:F1}, {pos.Z:F1})");
                 if (randomRadius.HasValue)
-                    vnav.NavigateToRandomInRadius(pos, randomRadius.Value, preferredShardId: preferredShardId);
+                    vnav.NavigateToRandomInRadius(pos, randomRadius.Value, preferredShardId: preferredShardId, dismountOnArrival: dismountOnArrival);
                 else
-                    vnav.NavigateTo(pos, preferredShardId: preferredShardId);
+                    vnav.NavigateTo(pos, preferredShardId: preferredShardId, dismountOnArrival: dismountOnArrival);
             }
         }
     }
@@ -126,8 +136,14 @@ internal sealed class FloatingStatusWindow : Window
             return false;
 
         ImGui.TextUnformatted("FATE");
+        var currentMap = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, config);
         foreach (var fate in fates)
         {
+            var boss = currentMap.HasValue
+                ? BossCatalog.GetFates(currentMap.Value).FirstOrDefault(boss => boss.FateId == fate!.FateId
+                    || boss.ObjectNameAliases.Any(alias => fate!.Name.TextValue.StartsWith(alias, StringComparison.Ordinal))
+                    || boss.Name.Equals(fate!.Name.TextValue, StringComparison.Ordinal))
+                : null;
             var name = fate!.Name.TextValue;
             ImGui.PushStyleColor(ImGuiCol.Text, Yellow);
             ImGui.TextUnformatted(name);
@@ -135,7 +151,7 @@ internal sealed class FloatingStatusWindow : Window
             ImGui.SameLine();
             ImGui.TextUnformatted($"{FormatFateState(fate.State)} {fate.Progress}% {FormatSeconds(fate.TimeRemaining)}");
             ImGui.SameLine();
-            DrawFlagNavButton(fate.Position, $"fate-{fate.FateId}", VnavService.GetPreferredShardIdForFate(fate.FateId));
+            DrawFlagNavButton(fate.Position, $"fate-{fate.FateId}", VnavService.GetPreferredShardIdForFate(fate.FateId), dismountOnArrival: boss != null && BossCatalog.IsMagicPot(boss));
         }
 
         return true;

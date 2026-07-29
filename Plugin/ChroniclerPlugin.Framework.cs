@@ -109,6 +109,12 @@ public sealed partial class ChroniclerPlugin
 
         if (DalamudApi.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.BetweenAreas]
             || DalamudApi.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.BetweenAreas51])
+        {
+            pendingAutoReturnSawBetweenAreas = true;
+            return true;
+        }
+
+        if (!pendingAutoReturnSawBetweenAreas)
             return true;
 
         if (currentMap != pendingAutoReturnMap.Value)
@@ -139,6 +145,7 @@ public sealed partial class ChroniclerPlugin
         pendingAutoReturnMap = null;
         pendingAutoReturnStartedUtc = null;
         pendingAutoReturnBaseCampUtc = null;
+        pendingAutoReturnSawBetweenAreas = false;
     }
 
     private bool IsActiveAutoTargetAvailable(ExpeditionMap map)
@@ -148,7 +155,9 @@ public sealed partial class ChroniclerPlugin
         {
             return DalamudApi.FateTable
                 .Where(fate => fate != null && DalamudApi.FateTable.IsValid(fate))
-                .Any(fate => fate!.FateId == fateId && fate.State is FateState.Preparing or FateState.Running);
+                .Any(fate => fate!.FateId == fateId
+                             && (fate.State is FateState.Preparing or FateState.Running
+                                 || (BossCatalog.IsMagicPotFateId(fate.FateId) && fate.State == FateState.Ending)));
         }
 
         if (activeAutoNavigationKey.StartsWith("CE:", StringComparison.Ordinal)
@@ -194,7 +203,7 @@ public sealed partial class ChroniclerPlugin
                 if (activeAutoNavigationKey != key && ShouldSkipAutoTarget(fate.State == FateState.Running, fate.Progress))
                     continue;
 
-                NavigateAutoTargetOnce(key, $"FATE {boss.Abbreviation}", fate.Position, VnavService.GetPreferredShardIdForFate(fate.FateId));
+                NavigateAutoTargetOnce(key, $"FATE {boss.Abbreviation}", fate.Position, VnavService.GetPreferredShardIdForFate(fate.FateId), dismountOnArrival: BossCatalog.IsMagicPot(boss));
                 return true;
             }
         }
@@ -224,6 +233,9 @@ public sealed partial class ChroniclerPlugin
                 continue;
 
             var key = $"CE:{bossKey}";
+            if (activeAutoNavigationKey != key && ev.State == DynamicEventState.Battle)
+                continue;
+
             if (activeAutoNavigationKey != key && ShouldSkipAutoTarget(ev.State == DynamicEventState.Battle, ev.Progress))
                 continue;
 
@@ -237,7 +249,7 @@ public sealed partial class ChroniclerPlugin
     private bool ShouldSkipAutoTarget(bool isBattle, int progress)
         => isBattle && progress >= Math.Clamp(Configuration.AutoSkipProgressPercent, 0, 100);
 
-    private void NavigateAutoTargetOnce(string key, string label, Vector3 pos, uint? preferredShardId = null, float? randomRadius = null)
+    private void NavigateAutoTargetOnce(string key, string label, Vector3 pos, uint? preferredShardId = null, float? randomRadius = null, bool dismountOnArrival = false)
     {
         if (activeAutoNavigationKey == key)
             return;
@@ -264,9 +276,9 @@ public sealed partial class ChroniclerPlugin
         autoReturnDueUtc = null;
         LogHelper.Chat($"全自动: 导航到 {label}");
         if (randomRadius.HasValue)
-            vnav.NavigateToRandomInRadius(pos, randomRadius.Value, preferredShardId: preferredShardId);
+            vnav.NavigateToRandomInRadius(pos, randomRadius.Value, preferredShardId: preferredShardId, dismountOnArrival: dismountOnArrival);
         else
-            vnav.NavigateTo(pos, preferredShardId: preferredShardId);
+            vnav.NavigateTo(pos, preferredShardId: preferredShardId, dismountOnArrival: dismountOnArrival);
     }
 
     private void ReturnAfterAutoTargetEnds(ExpeditionMap map)
@@ -289,11 +301,12 @@ public sealed partial class ChroniclerPlugin
         pendingAutoReturnMap = map;
         pendingAutoReturnStartedUtc = DateTime.UtcNow;
         pendingAutoReturnBaseCampUtc = null;
+        pendingAutoReturnSawBetweenAreas = false;
 
         if (Configuration.HasAutoReturnStandbyPoint)
         {
             pendingStandbyNavStartedUtc = DateTime.UtcNow;
-            pendingStandbyNavUtc = DateTime.UtcNow + TimeSpan.FromSeconds(3);
+            pendingStandbyNavUtc = DateTime.UtcNow + TimeSpan.FromSeconds(8);
         }
     }
 

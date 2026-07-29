@@ -25,6 +25,7 @@ public sealed partial class ChroniclerPlugin : IDalamudPlugin
     private ExpeditionMap? pendingAutoReturnMap;
     private DateTime? pendingAutoReturnStartedUtc;
     private DateTime? pendingAutoReturnBaseCampUtc;
+    private bool pendingAutoReturnSawBetweenAreas;
 
     public string Name => "新月岛史官";
 
