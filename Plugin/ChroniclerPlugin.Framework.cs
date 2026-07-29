@@ -55,6 +55,7 @@ public sealed partial class ChroniclerPlugin
             wasDead = false;
             postReturnIdleUtc = null;
             autoNavWasEnabled = false;
+            ClearPendingStandbyNavigation();
             return;
         }
 
@@ -70,6 +71,11 @@ public sealed partial class ChroniclerPlugin
                 pendingAutoReturnStartedUtc = DateTime.UtcNow;
                 pendingAutoReturnBaseCampUtc = null;
                 pendingAutoReturnSawBetweenAreas = false;
+                if (Configuration.HasAutoReturnStandbyPoint)
+                {
+                    pendingStandbyNavStartedUtc = DateTime.UtcNow;
+                    pendingStandbyNavUtc = DateTime.UtcNow + TimeSpan.FromSeconds(8);
+                }
                 return;
             }
 
