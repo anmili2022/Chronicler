@@ -3,6 +3,7 @@
         "Author": "Anmi",
         "Name": "新月岛史官",
         "Description": "进入新月岛后自动记录南征/北征 CE/FATE 出现时间，支持导入/导出 xyd.zzmelon.com 分享码，生成喊话，并监听游戏内喊话自动同步状态。",
+        "IconUrl": "https://raw.githubusercontent.com/anmili2022/Chronicler/main/images/icon.png",
         "InternalName": "Chronicler",
         "AssemblyVersion": "0.1.0.0",
         "RepoUrl": "https://github.com/anmili2022/Chronicler",
