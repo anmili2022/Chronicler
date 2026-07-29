@@ -31,6 +31,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Include="images\icon.png" CopyToOutputDirectory="PreserveNewest" />
     <Reference Include="Dalamud" HintPath="$(DalamudLibPath)Dalamud.dll" Private="false" />
     <Reference Include="Dalamud.Bindings.ImGui" HintPath="$(DalamudLibPath)Dalamud.Bindings.ImGui.dll" Private="false" />
     <Reference Include="FFXIVClientStructs" HintPath="$(DalamudLibPath)FFXIVClientStructs.dll" Private="false" />
