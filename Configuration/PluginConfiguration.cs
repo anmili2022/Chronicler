@@ -18,6 +18,10 @@ public sealed class PluginConfiguration : IPluginConfiguration
     public int AutoReturnDelaySeconds = 5;
     public int AutoSkipProgressPercent = 80;
     public bool AutoPrioritizeCe = true;
+    public float AutoReturnStandbyX = 0;
+    public float AutoReturnStandbyY = 0;
+    public float AutoReturnStandbyZ = 0;
+    public bool HasAutoReturnStandbyPoint = false;
     public string AutoNavigationTargetType = string.Empty;
     public uint AutoNavigationTargetId = 0;
     public string AutoNavigationTargetName = string.Empty;

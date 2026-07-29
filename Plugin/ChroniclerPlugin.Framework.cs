@@ -22,6 +22,8 @@ public sealed partial class ChroniclerPlugin
                 Configuration.Save();
             }
 
+            ProcessStandbyNavigation();
+
             if (Configuration.AutoDetectAppearances)
             {
                 appearanceDetector.Update(currentMap);
@@ -56,6 +58,9 @@ public sealed partial class ChroniclerPlugin
             return;
 
         lastAutoNavigationUpdateUtc = now;
+
+        if (DalamudApi.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.InCombat])
+            return;
 
         if (Configuration.AutoPrioritizeCe)
         {
@@ -162,5 +167,26 @@ public sealed partial class ChroniclerPlugin
         autoReturnDueUtc = null;
         LogHelper.Chat(delaySeconds > 0 ? $"全自动: 目标已结束，延迟 {delaySeconds} 秒后回营地。" : "全自动: 目标已结束，回营地等待下一次。");
         vnav.ReturnToBaseCamp();
+
+        if (Configuration.HasAutoReturnStandbyPoint)
+            pendingStandbyNavUtc = DateTime.UtcNow + TimeSpan.FromSeconds(3);
+    }
+
+    private void ProcessStandbyNavigation()
+    {
+        if (!pendingStandbyNavUtc.HasValue)
+            return;
+
+        if (DateTime.UtcNow < pendingStandbyNavUtc.Value)
+            return;
+
+        pendingStandbyNavUtc = null;
+
+        if (!Configuration.HasAutoReturnStandbyPoint)
+            return;
+
+        var pos = new Vector3(Configuration.AutoReturnStandbyX, Configuration.AutoReturnStandbyY, Configuration.AutoReturnStandbyZ);
+        LogHelper.Chat("全自动: 前往待命点。");
+        vnav.NavigateTo(pos);
     }
 }

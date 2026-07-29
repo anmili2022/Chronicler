@@ -164,7 +164,12 @@ internal sealed class FloatingStatusWindow : Window
             ImGui.TextUnformatted(ev.Name.ToString());
             ImGui.PopStyleColor();
             ImGui.SameLine();
-            ImGui.TextUnformatted($"{FormatCeState(ev.State)} {ev.Progress}% {FormatSeconds(ev.SecondsLeft)}");
+            var registerRemaining = ev.State == DynamicEventState.Register && ev.StartTimestamp > 0
+                ? (int)Math.Max(0, ev.StartTimestamp - DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+                : 0;
+            ImGui.TextUnformatted(registerRemaining > 0
+                ? $"{FormatCeState(ev.State)} {ev.Progress}% {FormatSeconds(ev.SecondsLeft)} (报名 {registerRemaining}秒)"
+                : $"{FormatCeState(ev.State)} {ev.Progress}% {FormatSeconds(ev.SecondsLeft)}");
             ImGui.SameLine();
             DrawFlagNavButton(ev.MapMarker.Position, $"ce-{ev.DynamicEventId}", randomRadius: ev.MapMarker.Radius);
         }

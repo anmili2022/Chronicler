@@ -17,6 +17,7 @@ internal sealed class MainWindow : Window
     private string statusText = string.Empty;
     private string southTerritoriesText;
     private string northTerritoriesText;
+    private readonly List<string> distanceDebugLines = new();
     private const int MaxDebugRows = 50;
 
     public MainWindow(PluginConfiguration config, CrescentStateService state, VnavService vnav)
@@ -132,7 +133,58 @@ internal sealed class MainWindow : Window
 
         if (ImGui.Button("新月岛：北征之章 信息整理"))
             OpenUrl("https://bbs.nga.cn/read.php?tid=47269383");
+
+        ImGui.SameLine();
+        if (ImGui.Button("显示当前位置/CE/FATE距离"))
+            UpdateDistanceDebugLines();
+
+        foreach (var line in distanceDebugLines)
+            ImGui.TextDisabled(line);
     }
+
+    private unsafe void UpdateDistanceDebugLines()
+    {
+        distanceDebugLines.Clear();
+
+        var player = DalamudApi.ObjectTable.LocalPlayer;
+        if (player == null)
+        {
+            distanceDebugLines.Add("未找到当前玩家对象。");
+            return;
+        }
+
+        var playerPos = player.Position;
+        distanceDebugLines.Add($"当前位置: {FormatPosition(playerPos)}");
+
+        var fates = DalamudApi.FateTable
+            .Where(fate => fate != null && DalamudApi.FateTable.IsValid(fate))
+            .Where(fate => fate!.State is FateState.Preparing or FateState.Running or FateState.Ending)
+            .Select(fate => fate!)
+            .Select(fate => (Type: "FATE", Id: (uint)fate.FateId, Name: fate.Name.TextValue, Pos: fate.Position, Distance: Vector3.Distance(playerPos, fate.Position)))
+            .ToList();
+
+        var content = PublicContentOccultCrescent.GetInstance();
+        var ces = content == null
+            ? []
+            : content->DynamicEventContainer.Events
+                .ToArray()
+                .Where(ev => ev.State != DynamicEventState.Inactive)
+                .Select(ev => (Type: "CE", Id: (uint)ev.DynamicEventId, Name: ev.Name.ToString(), Pos: ev.MapMarker.Position, Distance: Vector3.Distance(playerPos, ev.MapMarker.Position)))
+                .ToList();
+
+        var targets = fates.Concat(ces).OrderBy(item => item.Distance).ToArray();
+        if (targets.Length == 0)
+        {
+            distanceDebugLines.Add("当前没有活动 FATE/CE。");
+            return;
+        }
+
+        foreach (var target in targets)
+            distanceDebugLines.Add($"{target.Type} #{target.Id} {target.Name}: 距离 {target.Distance:F1}，坐标 {FormatPosition(target.Pos)}");
+    }
+
+    private static string FormatPosition(Vector3 pos)
+        => $"({pos.X:F1}, {pos.Y:F1}, {pos.Z:F1})";
 
     private void OpenUrl(string url)
     {
@@ -281,6 +333,30 @@ internal sealed class MainWindow : Window
         {
             config.AutoPrioritizeCe = autoPrioritizeCe;
             config.Save();
+        }
+        ImGui.SameLine();
+        if (ImGui.SmallButton(config.HasAutoReturnStandbyPoint ? "更新待命点" : "记录待命点"))
+        {
+            var pos = DalamudApi.ObjectTable.LocalPlayer?.Position;
+            if (pos.HasValue)
+            {
+                config.AutoReturnStandbyX = pos.Value.X;
+                config.AutoReturnStandbyY = pos.Value.Y;
+                config.AutoReturnStandbyZ = pos.Value.Z;
+                config.HasAutoReturnStandbyPoint = true;
+                config.Save();
+                LogHelper.Chat($"已记录待命点 ({pos.Value.X:F1}, {pos.Value.Y:F1}, {pos.Value.Z:F1})");
+            }
+        }
+        if (config.HasAutoReturnStandbyPoint)
+        {
+            ImGui.SameLine();
+            if (ImGui.SmallButton("清除待命点"))
+            {
+                config.HasAutoReturnStandbyPoint = false;
+                config.Save();
+                LogHelper.Chat("已清除待命点。");
+            }
         }
 
         if (ImGui.CollapsingHeader("CE##auto_ce_targets", ImGuiTreeNodeFlags.DefaultOpen))

@@ -17,6 +17,7 @@ public sealed partial class ChroniclerPlugin : IDalamudPlugin
     private string activeAutoNavigationKey = string.Empty;
     private bool autoNavigationReturned;
     private DateTime? autoReturnDueUtc;
+    private DateTime? pendingStandbyNavUtc;
 
     public string Name => "新月岛史官";
 

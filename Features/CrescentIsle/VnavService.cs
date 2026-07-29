@@ -174,10 +174,8 @@ internal sealed class VnavService : IDisposable
 
     private Vector3 PickRandomPointInRadius(Vector3 center, float radius)
     {
-        if (radius <= 0f)
-            return center;
-
-        var safeRadius = Math.Max(1f, radius - 5f);
+        var capped = radius > 0f ? radius : 15f;
+        var safeRadius = Math.Min(15f, Math.Max(1f, capped));
         for (var i = 0; i < 16; i++)
         {
             var angle = Random.Shared.NextDouble() * Math.Tau;
@@ -188,7 +186,7 @@ internal sealed class VnavService : IDisposable
                 center.Z + (float)Math.Sin(angle) * (float)distance);
 
             var snapped = SnapToNavmesh(candidate);
-            if (IsWithinHorizontalRadius(snapped, center, radius))
+            if (IsWithinHorizontalRadius(snapped, center, capped))
                 return snapped;
         }
 
