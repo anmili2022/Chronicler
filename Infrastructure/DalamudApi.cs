@@ -1,4 +1,5 @@
 using Dalamud.IoC;
+using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 
@@ -14,7 +15,9 @@ internal sealed class DalamudApi
     [PluginService] public static IFramework Framework { get; private set; } = null!;
     [PluginService] public static IObjectTable ObjectTable { get; private set; } = null!;
     [PluginService] public static IFateTable FateTable { get; private set; } = null!;
+    [PluginService] public static ICondition Condition { get; private set; } = null!;
     [PluginService] public static IChatGui ChatGui { get; private set; } = null!;
     [PluginService] public static ICommandManager Commands { get; private set; } = null!;
     [PluginService] public static IPluginLog Log { get; private set; } = null!;
+    [PluginService] public static IDataManager DataManager { get; private set; } = null!;
 }

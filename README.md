@@ -289,10 +289,18 @@ internal sealed record BossEntry(
     ExpeditionMap Map,
     int Id,
     int Index,
+    BossEventKind Kind,
     string Abbreviation,
     string Name,
     string Trigger,
+    ushort? FateId,
     string[] ObjectNameAliases);
+
+internal enum BossEventKind
+{
+    CriticalEncounter,
+    Fate,
+}
 ```
 
 Recommended saved record:
@@ -313,8 +321,8 @@ Store full local `DateTime?` internally. Export only `HH:mm` to xyd-compatible s
 
 Known Territory IDs:
 
-- North: `1346`
-- South: unknown, needs in-game verification.
+- North: `1346` (confirmed)
+- South: `1252` (confirmed)
 
 Add config fields:
 
@@ -503,16 +511,44 @@ Automatic appearance detection is implemented with `IFateTable` polling, but sti
 
 ### Pending / Next Steps
 
-1. Add coordinate display in floating status window:
-   - FATE: `fate.Position.X/Y/Z` (Vector3)
-   - CE: `ev.PositionX/PositionY` (float)
-2. **Auto flag + vnav navi** (deferred): when CE/FATE appears, place map flag at target coordinates, then invoke vnav IPC to set waypoint and follow. Need vnav IPC interface names/signatures from vnav source code.
-3. Continue collecting North (1346) FATE IDs and CE DynamicEventIds
-4. Verify South Territory ID in-game
-5. Verify if CE appears in IFateTable for magic pot-type CEs
+1. **Auto flag + vnav navi** ✓ Done — `VnavService` wraps IPC calls, flag button shows on each FATE/CE row in floating window. When vnav is loaded, shows "导航" button (place flag + navigate). When vnav not loaded, shows "插旗" button (place flag only).
+2. Continue collecting North (1346) FATE IDs and CE DynamicEventIds
+3. Verify if CE appears in IFateTable for magic pot-type CEs
 
 ### Build
 
 - `dotnet build Chronicler.csproj -c Release -o output`
+- Output: `E:\git\Chronicler\output\Chronicler.dll`
+- Known: Dalamud SDK reference warnings are expected on this machine; compilation succeeds with 0 errors.
+
+## Session Log — 2026-07-29 Continued
+
+### Changes Made
+
+1. **CE/FATE detection and matching**
+   - Split `BossEntry` into `BossEventKind.CriticalEncounter` and `BossEventKind.Fate` so CE and FATE auto-navigation lists no longer show identical content.
+   - CE detection and auto-navigation now use `DynamicEventId` exact matching first, then strict name/alias fallback via `BossCatalog.MatchCriticalEncounter`.
+   - FATE detection only scans catalog entries marked as FATE.
+   - This prevents pot FATE entries from being recorded through the CE detector while still allowing CE navigation when game `DynamicEventId` differs from the xyd list index.
+
+2. **Auto navigation and dependency UX**
+   - Added `VnavService` integration for vnavmesh and Lifestream.
+   - Navigation flow supports walking to a source shard, Lifestream aethernet teleport, mount roulette, then walking to the target.
+   - Added all-auto mode with FATE priority, CE fallback, and return-to-camp after target end.
+   - Added dependency status labels for `vnavmesh` and `Lifestream`.
+
+3. **Floating and main UI**
+   - Floating window shows current FateTable FATEs and DynamicEventContainer CEs with manual navigation, return-to-camp, and all-auto toggle.
+   - Auto-navigation CE/FATE folds now show the full configured Boss lists by type, with live state looked up from real game sources.
+   - Moved observed FATE/debug sections out of the record/share fold so they are visible whenever `显示调试区` is enabled.
+   - Added a `新月岛：北征之章 信息整理` button linking to `https://bbs.nga.cn/read.php?tid=47269383`.
+
+4. **Chat and debug output**
+   - Added island ID capture from chat and display in the UI.
+   - Navigation step messages are now gated by the `导航调试` toggle. Failure/error messages remain visible.
+
+### Build
+
+- `dotnet build "E:\git\Chronicler\Chronicler.csproj" -c Release -o "E:\git\Chronicler\output"`
 - Output: `E:\git\Chronicler\output\Chronicler.dll`
 - Known: Dalamud SDK reference warnings are expected on this machine; compilation succeeds with 0 errors.

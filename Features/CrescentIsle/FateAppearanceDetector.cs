@@ -73,10 +73,10 @@ internal sealed class FateAppearanceDetector
     private static BossEntry? MatchBoss(ExpeditionMap map, IFate fate)
     {
         var fateName = fate.Name.TextValue;
-        return BossCatalog.GetBosses(map).FirstOrDefault(boss =>
+        return BossCatalog.GetFates(map).FirstOrDefault(boss =>
             boss.FateId == fate.FateId
-            || boss.ObjectNameAliases.Any(alias => fateName.Contains(alias, StringComparison.Ordinal))
-            || boss.Name.Contains(fateName, StringComparison.Ordinal));
+            || boss.ObjectNameAliases.Any(alias => fateName.StartsWith(alias, StringComparison.Ordinal))
+            || boss.Name.Equals(fateName, StringComparison.Ordinal));
     }
 
     private static DateTime ResolveAppearanceTime(IFate fate)

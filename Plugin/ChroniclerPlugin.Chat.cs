@@ -5,6 +5,7 @@ namespace Chronicler;
 public sealed partial class ChroniclerPlugin
 {
     private static readonly Regex ShareCodeLikeRegex = new(@"[NB]0[A-Za-z0-9]{5,}", RegexOptions.Compiled);
+    private static readonly Regex IslandIdRegex = new(@"岛\s*ID[:：]\s*(\d+)", RegexOptions.Compiled);
 
     private void RegisterChatHandlers()
     {
@@ -22,6 +23,7 @@ public sealed partial class ChroniclerPlugin
             return;
 
         var text = ExtractChatMessageText(message);
+        ObserveIslandId(text);
         ObserveCeAnnouncement(text);
 
         if (!LooksLikeXydText(text))
@@ -57,6 +59,23 @@ public sealed partial class ChroniclerPlugin
 
         var currentMap = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, Configuration) ?? Configuration.LastSelectedMap;
         stateService.RecordCeAnnouncement(currentMap, DalamudApi.ClientState.TerritoryType, text.Trim(), DateTime.Now);
+    }
+
+    private void ObserveIslandId(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
+        var match = IslandIdRegex.Match(text);
+        if (!match.Success)
+            return;
+
+        var islandId = match.Groups[1].Value;
+        if (Configuration.LastIslandId == islandId)
+            return;
+
+        Configuration.LastIslandId = islandId;
+        Configuration.Save();
     }
 
     private static string ExtractChatMessageText(object message)

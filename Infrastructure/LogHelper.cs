@@ -19,6 +19,9 @@ internal static class LogHelper
 
     public static void Chat(string message)
     {
+        if (message.StartsWith("导航调试:", StringComparison.Ordinal) && config?.ShowNavigationDebug != true)
+            return;
+
         PrintPluginMessage(message);
     }
 

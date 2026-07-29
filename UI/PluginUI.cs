@@ -8,10 +8,10 @@ internal sealed class PluginUI : IDisposable
     private readonly MainWindow mainWindow;
     private readonly FloatingStatusWindow floatingStatusWindow;
 
-    public PluginUI(PluginConfiguration config, CrescentStateService state)
+    public PluginUI(PluginConfiguration config, CrescentStateService state, VnavService vnav)
     {
-        mainWindow = new MainWindow(config, state);
-        floatingStatusWindow = new FloatingStatusWindow(config, OpenMainWindow);
+        mainWindow = new MainWindow(config, state, vnav);
+        floatingStatusWindow = new FloatingStatusWindow(config, ToggleMainWindow, vnav);
         windowSystem.AddWindow(mainWindow);
         windowSystem.AddWindow(floatingStatusWindow);
     }
@@ -22,6 +22,7 @@ internal sealed class PluginUI : IDisposable
         windowSystem.Draw();
     }
 
+    public void ToggleMainWindow() => mainWindow.IsOpen = !mainWindow.IsOpen;
     public void OpenMainWindow() => mainWindow.IsOpen = true;
 
     public void Dispose() => windowSystem.RemoveAllWindows();

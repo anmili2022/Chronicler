@@ -59,7 +59,7 @@ internal sealed class CriticalEncounterDetector
             if (ev.State != DynamicEventState.Register)
                 continue;
 
-            var boss = MatchBoss(currentMap.Value, name);
+            var boss = MatchBoss(currentMap.Value, ev.DynamicEventId, name);
             if (boss == null)
                 continue;
 
@@ -67,7 +67,7 @@ internal sealed class CriticalEncounterDetector
                 continue;
 
             state.RecordAppearance(boss, appearedAt);
-            LogHelper.Info($"自动记录 CE {boss.Abbreviation} 出现时间，DynamicEventId={ev.DynamicEventId}，Name={name}。");
+            LogHelper.Chat($"自动记录 {boss.Abbreviation} 出现时间。");
         }
     }
 
@@ -82,14 +82,11 @@ internal sealed class CriticalEncounterDetector
         return DateTime.Now;
     }
 
-    private static BossEntry? MatchBoss(ExpeditionMap map, string eventName)
+    private static BossEntry? MatchBoss(ExpeditionMap map, uint dynamicEventId, string eventName)
     {
         if (string.IsNullOrWhiteSpace(eventName))
             return null;
 
-        return BossCatalog.GetBosses(map).FirstOrDefault(boss =>
-            boss.ObjectNameAliases.Any(alias => eventName.Contains(alias, StringComparison.Ordinal))
-            || boss.Name.Contains(eventName, StringComparison.Ordinal)
-            || eventName.Contains(boss.Abbreviation, StringComparison.Ordinal));
+        return BossCatalog.MatchCriticalEncounter(map, dynamicEventId, eventName);
     }
 }

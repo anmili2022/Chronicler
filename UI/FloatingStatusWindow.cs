@@ -11,9 +11,10 @@ internal sealed class FloatingStatusWindow : Window
     private static readonly Vector4 Yellow = new(1f, 0.85f, 0.3f, 1f);
 
     private readonly PluginConfiguration config;
-    private readonly Action openSettings;
+    private readonly Action toggleSettings;
+    private readonly VnavService vnav;
 
-    public FloatingStatusWindow(PluginConfiguration config, Action openSettings)
+    public FloatingStatusWindow(PluginConfiguration config, Action toggleSettings, VnavService vnav)
         : base(
             "##ChroniclerFloatingStatus",
             ImGuiWindowFlags.NoTitleBar
@@ -24,7 +25,8 @@ internal sealed class FloatingStatusWindow : Window
             | ImGuiWindowFlags.NoNav)
     {
         this.config = config;
-        this.openSettings = openSettings;
+        this.toggleSettings = toggleSettings;
+        this.vnav = vnav;
         BgAlpha = 0.8f;
         SizeCondition = ImGuiCond.FirstUseEver;
         Position = new Vector2(420f, 220f);
@@ -36,11 +38,20 @@ internal sealed class FloatingStatusWindow : Window
     public override unsafe void Draw()
     {
         Flags = BuildFlags();
-        DrawContextMenu();
+
+        if (ImGui.IsWindowHovered(ImGuiHoveredFlags.RootAndChildWindows) && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
+            toggleSettings();
 
         ImGui.PushStyleColor(ImGuiCol.Text, Yellow);
         ImGui.TextUnformatted("FATE / CE");
         ImGui.PopStyleColor();
+        if (config.AutoNavigationEnabled)
+        {
+            ImGui.SameLine();
+            ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.35f, 1f, 0.45f, 1f));
+            ImGui.TextUnformatted("全自动中");
+            ImGui.PopStyleColor();
+        }
         ImGui.Separator();
 
         var drewAny = false;
@@ -53,6 +64,23 @@ internal sealed class FloatingStatusWindow : Window
             ImGui.TextUnformatted("当前无 FATE/CE");
             ImGui.PopStyleColor();
         }
+
+        if (vnav.IsReady)
+        {
+            ImGui.Separator();
+            if (ImGui.SmallButton("清除导航"))
+                vnav.Stop();
+            ImGui.SameLine();
+            if (ImGui.SmallButton("回营地"))
+                vnav.ReturnToBaseCamp();
+            ImGui.SameLine();
+            if (ImGui.SmallButton(config.AutoNavigationEnabled ? "全自动: 开" : "全自动: 关"))
+            {
+                config.AutoNavigationEnabled = !config.AutoNavigationEnabled;
+                config.Save();
+                LogHelper.Chat(config.AutoNavigationEnabled ? "全自动模式已开启。" : "全自动模式已关闭。");
+            }
+        }
     }
 
     private ImGuiWindowFlags BuildFlags()
@@ -61,8 +89,7 @@ internal sealed class FloatingStatusWindow : Window
                     | ImGuiWindowFlags.NoScrollbar
                     | ImGuiWindowFlags.NoScrollWithMouse
                     | ImGuiWindowFlags.AlwaysAutoResize
-                    | ImGuiWindowFlags.NoFocusOnAppearing
-                    | ImGuiWindowFlags.NoNav;
+                    | ImGuiWindowFlags.NoFocusOnAppearing;
 
         if (config.LockFloatingStatusWindow)
             flags |= ImGuiWindowFlags.NoMove;
@@ -70,28 +97,17 @@ internal sealed class FloatingStatusWindow : Window
         return flags;
     }
 
-    private void DrawContextMenu()
+    private unsafe void DrawFlagNavButton(Vector3 pos, string id)
     {
-        if (!ImGui.BeginPopupContextWindow("##chronicler_floating_context"))
-            return;
-
-        if (ImGui.MenuItem("打开设置"))
-            openSettings();
-
-        var locked = config.LockFloatingStatusWindow;
-        if (ImGui.MenuItem("锁定悬浮窗", string.Empty, locked))
+        if (vnav.IsReady)
         {
-            config.LockFloatingStatusWindow = !locked;
-            config.Save();
+            if (ImGui.SmallButton($"导航##{id}"))
+            {
+                if (config.ShowNavigationDebug)
+                    LogHelper.Chat($"导航调试: 开始导航到 ({pos.X:F1}, {pos.Y:F1}, {pos.Z:F1})");
+                vnav.NavigateTo(pos);
+            }
         }
-
-        if (ImGui.MenuItem("隐藏悬浮窗"))
-        {
-            config.ShowFloatingStatusWindow = false;
-            config.Save();
-        }
-
-        ImGui.EndPopup();
     }
 
     private bool DrawCurrentFates()
@@ -115,6 +131,8 @@ internal sealed class FloatingStatusWindow : Window
             ImGui.PopStyleColor();
             ImGui.SameLine();
             ImGui.TextUnformatted($"{FormatFateState(fate.State)} {fate.Progress}% {FormatSeconds(fate.TimeRemaining)}");
+            ImGui.SameLine();
+            DrawFlagNavButton(fate.Position, $"fate-{fate.FateId}");
         }
 
         return true;
@@ -144,6 +162,8 @@ internal sealed class FloatingStatusWindow : Window
             ImGui.PopStyleColor();
             ImGui.SameLine();
             ImGui.TextUnformatted($"{FormatCeState(ev.State)} {ev.Progress}% {FormatSeconds(ev.SecondsLeft)}");
+            ImGui.SameLine();
+            DrawFlagNavButton(new Vector3(ev.MapMarker.Position.X, 0, ev.MapMarker.Position.Y), $"ce-{ev.DynamicEventId}");
         }
 
         return true;

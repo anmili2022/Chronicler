@@ -9,9 +9,13 @@ public sealed partial class ChroniclerPlugin : IDalamudPlugin
     private readonly CrescentStateService stateService;
     private readonly FateAppearanceDetector appearanceDetector;
     private readonly CriticalEncounterDetector criticalEncounterDetector;
+    private readonly VnavService vnav;
     private readonly PluginUI ui;
     private bool isDisposing;
     private DateTime lastFrameworkErrorUtc = DateTime.MinValue;
+    private DateTime lastAutoNavigationUpdateUtc = DateTime.MinValue;
+    private string activeAutoNavigationKey = string.Empty;
+    private bool autoNavigationReturned;
 
     public string Name => "新月岛史官";
 
@@ -29,7 +33,8 @@ public sealed partial class ChroniclerPlugin : IDalamudPlugin
         stateService = new CrescentStateService(Configuration);
         appearanceDetector = new FateAppearanceDetector(stateService);
         criticalEncounterDetector = new CriticalEncounterDetector(stateService);
-        ui = new PluginUI(Configuration, stateService);
+        vnav = new VnavService(pluginInterface, Configuration);
+        ui = new PluginUI(Configuration, stateService, vnav);
 
         RegisterCommands();
         RegisterChatHandlers();
@@ -51,6 +56,7 @@ public sealed partial class ChroniclerPlugin : IDalamudPlugin
         UnregisterChatHandlers();
         UnregisterCommands();
         ui.Dispose();
+        vnav.Dispose();
         Configuration.Save();
     }
 }

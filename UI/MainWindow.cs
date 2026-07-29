@@ -1,6 +1,9 @@
+using System.Diagnostics;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Game.ClientState.Fates;
 using Dalamud.Interface.Windowing;
+using FFXIVClientStructs.FFXIV.Client.Game.InstanceContent;
 
 namespace Chronicler;
 
@@ -8,6 +11,7 @@ internal sealed class MainWindow : Window
 {
     private readonly PluginConfiguration config;
     private readonly CrescentStateService state;
+    private readonly VnavService vnav;
     private string importText = string.Empty;
     private string outputText = string.Empty;
     private string statusText = string.Empty;
@@ -15,11 +19,12 @@ internal sealed class MainWindow : Window
     private string northTerritoriesText;
     private const int MaxDebugRows = 50;
 
-    public MainWindow(PluginConfiguration config, CrescentStateService state)
+    public MainWindow(PluginConfiguration config, CrescentStateService state, VnavService vnav)
         : base("新月岛史官")
     {
         this.config = config;
         this.state = state;
+        this.vnav = vnav;
         NormalizeTerritoryIds();
         southTerritoriesText = FormatTerritoryIds(config.SouthTerritoryIds);
         northTerritoriesText = FormatTerritoryIds(config.NorthTerritoryIds);
@@ -37,19 +42,32 @@ internal sealed class MainWindow : Window
             config.Save();
         }
 
+        DrawDependencyStatus();
+        ImGui.Separator();
         DrawStatus(territory, resolvedMap);
         ImGui.Separator();
-        DrawBossTable(config.LastSelectedMap);
+        DrawAutoNavigation(resolvedMap);
         ImGui.Separator();
-        DrawImportExport(config.LastSelectedMap);
+        if (ImGui.CollapsingHeader("新月岛史官-记录、喊话同步、分享##main_sections"))
+        {
+            DrawMapSelector();
+            ImGui.Separator();
+            DrawBossTable(config.LastSelectedMap);
+            ImGui.Separator();
+            DrawImportExport(config.LastSelectedMap);
+            ImGui.Separator();
+            DrawTerritorySettings();
+        }
+
         ImGui.Separator();
         DrawDebugSections(config.LastSelectedMap);
-        DrawTerritorySettings();
     }
 
     private void DrawStatus(uint territory, ExpeditionMap? resolvedMap)
     {
         ImGui.TextUnformatted($"当前 TerritoryType: {territory}");
+        ImGui.SameLine();
+        ImGui.TextUnformatted($"当前岛 ID: {GetCurrentIslandId()}");
         ImGui.TextUnformatted($"识别地图: {(resolvedMap.HasValue ? GetMapName(resolvedMap.Value) : "未识别")}");
 
         var enabled = config.Enabled;
@@ -83,6 +101,14 @@ internal sealed class MainWindow : Window
             config.Save();
         }
 
+        ImGui.SameLine();
+        var showNavigationDebug = config.ShowNavigationDebug;
+        if (ImGui.Checkbox("导航调试", ref showNavigationDebug))
+        {
+            config.ShowNavigationDebug = showNavigationDebug;
+            config.Save();
+        }
+
         var showFloating = config.ShowFloatingStatusWindow;
         if (ImGui.Checkbox("显示 FATE/CE 悬浮窗", ref showFloating))
         {
@@ -98,6 +124,28 @@ internal sealed class MainWindow : Window
             config.Save();
         }
 
+        if (!string.IsNullOrWhiteSpace(statusText))
+            ImGui.TextDisabled(statusText);
+
+        if (ImGui.Button("新月岛：北征之章 信息整理"))
+            OpenUrl("https://bbs.nga.cn/read.php?tid=47269383");
+    }
+
+    private void OpenUrl(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            LogHelper.Warning(ex, "打开外部链接失败。");
+            statusText = $"打开链接失败: {ex.Message}";
+        }
+    }
+
+    private void DrawMapSelector()
+    {
         if (ImGui.Button("南征"))
         {
             config.LastSelectedMap = ExpeditionMap.South;
@@ -113,13 +161,32 @@ internal sealed class MainWindow : Window
 
         ImGui.SameLine();
         ImGui.TextUnformatted($"当前列表: {GetMapName(config.LastSelectedMap)}");
+    }
 
-        if (!string.IsNullOrWhiteSpace(statusText))
-            ImGui.TextDisabled(statusText);
+    private void DrawDependencyStatus()
+    {
+        ImGui.TextUnformatted("依赖插件:");
+        ImGui.SameLine();
+        DrawDependencyLabel("vnavmesh", vnav.IsReady);
+        ImGui.SameLine();
+        DrawDependencyLabel("Lifestream", vnav.IsLifestreamAvailable);
+    }
+
+    private static void DrawDependencyLabel(string name, bool installed)
+    {
+        ImGui.PushStyleColor(ImGuiCol.Text, installed ? new Vector4(0.35f, 1f, 0.45f, 1f) : new Vector4(1f, 0.35f, 0.35f, 1f));
+        ImGui.TextUnformatted($"{name}: {(installed ? "已安装" : "未安装")}");
+        ImGui.PopStyleColor();
     }
 
     private void DrawBossTable(ExpeditionMap map)
     {
+        if (ImGui.SmallButton("清空所有"))
+        {
+            state.ClearMap(map);
+            statusText = $"已清空 {GetMapName(map)} 所有 Boss 时间记录。";
+        }
+
         if (!ImGui.BeginTable("##boss_table", 5, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable))
             return;
 
@@ -157,6 +224,225 @@ internal sealed class MainWindow : Window
         }
 
         ImGui.EndTable();
+    }
+
+    private unsafe void DrawAutoNavigation(ExpeditionMap? resolvedMap)
+    {
+        var autoNavigationEnabled = config.AutoNavigationEnabled;
+        if (ImGui.Checkbox("全自动模式", ref autoNavigationEnabled))
+        {
+            config.AutoNavigationEnabled = autoNavigationEnabled;
+            config.Save();
+        }
+
+        if (!ImGui.CollapsingHeader("自动寻路"))
+            return;
+
+        if (!resolvedMap.HasValue)
+        {
+            ImGui.TextDisabled("当前未识别为新月岛地图。");
+            return;
+        }
+
+        var content = PublicContentOccultCrescent.GetInstance();
+        var fateBosses = BossCatalog.GetFates(resolvedMap.Value).ToArray();
+        var ceBosses = BossCatalog.GetCriticalEncounters(resolvedMap.Value).ToArray();
+        var enabledCeCount = ceBosses.Count(boss => !config.DisabledAutoCeIds.Contains((uint)boss.Index));
+        var enabledFateCount = fateBosses.Count(boss => !config.DisabledAutoFateIds.Contains(boss.FateId!.Value));
+        ImGui.TextUnformatted($"已勾选: CE {enabledCeCount}/{ceBosses.Length}  FATE {enabledFateCount}/{fateBosses.Length}");
+        ImGui.SameLine();
+        DrawAutoTargetBulkToggle("CE", ceBosses.Select(boss => (uint)boss.Index));
+        ImGui.SameLine();
+        DrawAutoTargetBulkToggle("FATE", fateBosses.Select(boss => (uint)boss.FateId!.Value));
+
+        if (ImGui.CollapsingHeader("CE##auto_ce_targets", ImGuiTreeNodeFlags.DefaultOpen))
+            DrawAutoCeTargetTable(ceBosses, content);
+
+        if (ImGui.CollapsingHeader("FATE##auto_fate_targets", ImGuiTreeNodeFlags.DefaultOpen))
+            DrawAutoFateTargetTable(fateBosses);
+    }
+
+    private void DrawAutoFateTargetTable(IReadOnlyList<BossEntry> bosses)
+    {
+        if (!ImGui.BeginTable("##auto_fate_table", 6, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable))
+            return;
+
+        ImGui.TableSetupColumn("启用", ImGuiTableColumnFlags.WidthFixed, 45f);
+        ImGui.TableSetupColumn("FateId", ImGuiTableColumnFlags.WidthFixed, 60f);
+        ImGui.TableSetupColumn("简称", ImGuiTableColumnFlags.WidthFixed, 80f);
+        ImGui.TableSetupColumn("名称");
+        ImGui.TableSetupColumn("状态", ImGuiTableColumnFlags.WidthFixed, 90f);
+        ImGui.TableSetupColumn("剩余", ImGuiTableColumnFlags.WidthFixed, 70f);
+        ImGui.TableHeadersRow();
+
+        foreach (var boss in bosses)
+        {
+            var fateId = boss.FateId!.Value;
+            var fate = FindActiveFate(fateId);
+            var enabled = !config.DisabledAutoFateIds.Contains(fateId);
+
+            ImGui.TableNextRow();
+            ImGui.TableSetColumnIndex(0);
+            if (ImGui.Checkbox($"##auto_fate_{boss.Map}_{boss.Id}", ref enabled))
+                SetAutoTargetEnabled("FATE", fateId, enabled);
+
+            ImGui.TableSetColumnIndex(1);
+            ImGui.TextUnformatted(fateId.ToString());
+            ImGui.TableSetColumnIndex(2);
+            ImGui.TextUnformatted(boss.Abbreviation);
+            ImGui.TableSetColumnIndex(3);
+            ImGui.TextUnformatted(boss.Name);
+            ImGui.TableSetColumnIndex(4);
+            ImGui.TextUnformatted(fate == null ? "未出现" : fate.State.ToString());
+            ImGui.TableSetColumnIndex(5);
+            ImGui.TextUnformatted(fate == null ? "--" : fate.TimeRemaining.ToString());
+        }
+
+        ImGui.EndTable();
+    }
+
+    private unsafe void DrawAutoCeTargetTable(IReadOnlyList<BossEntry> bosses, PublicContentOccultCrescent* content)
+    {
+        if (!ImGui.BeginTable("##auto_ce_table", 7, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable))
+            return;
+
+        ImGui.TableSetupColumn("启用", ImGuiTableColumnFlags.WidthFixed, 45f);
+        ImGui.TableSetupColumn("EventId", ImGuiTableColumnFlags.WidthFixed, 65f);
+        ImGui.TableSetupColumn("简称", ImGuiTableColumnFlags.WidthFixed, 80f);
+        ImGui.TableSetupColumn("名称");
+        ImGui.TableSetupColumn("状态", ImGuiTableColumnFlags.WidthFixed, 90f);
+        ImGui.TableSetupColumn("进度", ImGuiTableColumnFlags.WidthFixed, 60f);
+        ImGui.TableSetupColumn("剩余", ImGuiTableColumnFlags.WidthFixed, 70f);
+        ImGui.TableHeadersRow();
+
+        foreach (var boss in bosses)
+        {
+            var eventId = (uint)boss.Index;
+            var ev = FindActiveCriticalEncounter(content, boss);
+            var enabled = !config.DisabledAutoCeIds.Contains(eventId);
+
+            ImGui.TableNextRow();
+            ImGui.TableSetColumnIndex(0);
+            if (ImGui.Checkbox($"##auto_ce_{boss.Map}_{boss.Id}", ref enabled))
+                SetAutoTargetEnabled("CE", eventId, enabled);
+
+            ImGui.TableSetColumnIndex(1);
+            ImGui.TextUnformatted(eventId.ToString());
+            ImGui.TableSetColumnIndex(2);
+            ImGui.TextUnformatted(boss.Abbreviation);
+            ImGui.TableSetColumnIndex(3);
+            ImGui.TextUnformatted(boss.Name);
+            ImGui.TableSetColumnIndex(4);
+            ImGui.TextUnformatted(ev.HasValue ? ev.Value.State.ToString() : "未出现");
+            ImGui.TableSetColumnIndex(5);
+            ImGui.TextUnformatted(ev.HasValue ? $"{ev.Value.Progress}%" : "--");
+            ImGui.TableSetColumnIndex(6);
+            ImGui.TextUnformatted(ev.HasValue ? ev.Value.SecondsLeft.ToString() : "--");
+        }
+
+        ImGui.EndTable();
+    }
+
+    private static IFate? FindActiveFate(ushort fateId)
+    {
+        foreach (var fate in DalamudApi.FateTable)
+        {
+            if (fate == null || !DalamudApi.FateTable.IsValid(fate) || fate.FateId != fateId)
+                continue;
+
+            if (fate.State is FateState.Preparing or FateState.Running or FateState.Ending)
+                return fate;
+        }
+
+        return null;
+    }
+
+    private static unsafe DynamicEvent? FindActiveCriticalEncounter(PublicContentOccultCrescent* content, BossEntry boss)
+    {
+        if (content == null)
+            return null;
+
+        foreach (var ev in content->DynamicEventContainer.Events)
+        {
+            if (ev.State != DynamicEventState.Inactive
+                && BossCatalog.MatchesCriticalEncounter(boss, ev.DynamicEventId, ev.Name.ToString()))
+                return ev;
+        }
+
+        return null;
+    }
+
+    private void DrawAutoTargetBulkToggle(string type, IEnumerable<uint> ids)
+    {
+        var list = type == "CE" ? config.DisabledAutoCeIds : config.DisabledAutoFateIds;
+        var allIds = ids.Distinct().ToList();
+        var allEnabled = allIds.All(id => !list.Contains(id));
+        var label = allEnabled ? $"{type} 全不选" : $"{type} 全选";
+
+        if (!ImGui.SmallButton($"{label}##auto_bulk_{type}"))
+            return;
+
+        if (allEnabled)
+        {
+            list.Clear();
+            list.AddRange(allIds);
+        }
+        else
+        {
+            foreach (var id in allIds)
+                list.Remove(id);
+        }
+
+        list.Sort();
+        config.Save();
+    }
+
+    private void SetAutoTargetEnabled(string type, uint id, bool enabled)
+    {
+        var disabled = type == "CE" ? config.DisabledAutoCeIds : config.DisabledAutoFateIds;
+        if (enabled)
+            disabled.Remove(id);
+        else if (!disabled.Contains(id))
+            disabled.Add(id);
+
+        disabled.Sort();
+        config.Save();
+    }
+
+    private string ResolveFateState(BossEntry boss)
+    {
+        foreach (var fate in DalamudApi.FateTable)
+        {
+            if (fate == null || !DalamudApi.FateTable.IsValid(fate) || fate.FateId != boss.FateId)
+                continue;
+
+            if (fate.State is FateState.Preparing or FateState.Running or FateState.Ending)
+                return fate.State.ToString();
+        }
+
+        return "未出现";
+    }
+
+    private unsafe string ResolveCeState(BossEntry boss, PublicContentOccultCrescent* content)
+    {
+        if (content != null)
+        {
+            foreach (var ev in content->DynamicEventContainer.Events)
+            {
+                if (ev.DynamicEventId == boss.Index && ev.State != DynamicEventState.Inactive)
+                    return ev.State.ToString();
+            }
+        }
+
+        return "未出现";
+    }
+
+    private void ClearAutoNavigationTarget()
+    {
+        config.AutoNavigationTargetType = string.Empty;
+        config.AutoNavigationTargetId = 0;
+        config.AutoNavigationTargetName = string.Empty;
+        config.Save();
     }
 
     private void DrawImportExport(ExpeditionMap map)
@@ -413,6 +699,20 @@ internal sealed class MainWindow : Window
         if (ImGui.Button("输出当前 FATE 到聊天"))
             PrintCurrentFatesToChat();
 
+        ImGui.SameLine();
+        if (ImGui.Button("扫描附近 EventObj"))
+            ScanNearbyEventObjects();
+
+        ImGui.SameLine();
+        if (ImGui.Button("检测当前传送点"))
+        {
+            var id = vnav.GetCurrentAetheryteId();
+            if (id.HasValue && id.Value != 0)
+                LogHelper.Chat($"当前传送点 PlaceNameId={id.Value}");
+            else
+                LogHelper.Chat("未检测到传送点（不在传送点旁边或 Lifestream 未就绪）。");
+        }
+
         if (!ImGui.BeginTable("##fate_debug_table", 10, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.ScrollX))
             return;
 
@@ -479,6 +779,29 @@ internal sealed class MainWindow : Window
             LogHelper.Chat($"还有 {lines.Length - 12} 条 FATE 未输出。 ");
     }
 
+    private static void ScanNearbyEventObjects()
+    {
+        var player = DalamudApi.ObjectTable.LocalPlayer;
+        if (player == null) return;
+
+        var playerPos = player.Position;
+        var count = 0;
+        foreach (var obj in DalamudApi.ObjectTable)
+        {
+            if (obj == null || obj.ObjectKind != Dalamud.Game.ClientState.Objects.Enums.ObjectKind.EventObj)
+                continue;
+
+            var dist = Vector3.Distance(playerPos, obj.Position);
+            if (dist > 50f) continue;
+
+            LogHelper.Chat($"EventObj: BaseId={obj.BaseId} Name={obj.Name} Pos=({obj.Position.X:F2}, {obj.Position.Y:F2}, {obj.Position.Z:F2})");
+            count++;
+        }
+
+        if (count == 0)
+            LogHelper.Chat("附近 50 码内没有 EventObj。");
+    }
+
     private static string FormatEpoch(int epoch)
         => epoch > 0 ? DateTimeOffset.FromUnixTimeSeconds(epoch).LocalDateTime.ToString("HH:mm:ss") : "--";
 
@@ -502,4 +825,7 @@ internal sealed class MainWindow : Window
 
     private static string GetMapName(ExpeditionMap map)
         => map == ExpeditionMap.South ? "南征" : "北征";
+
+    private string GetCurrentIslandId()
+        => string.IsNullOrWhiteSpace(config.LastIslandId) ? "--" : config.LastIslandId;
 }
