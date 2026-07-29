@@ -224,13 +224,13 @@ internal sealed class MainWindow : Window
         ImGui.SameLine();
         DrawDependencyLabel("vnavmesh", vnav.IsReady);
         ImGui.SameLine();
-        DrawDependencyLabel("Lifestream", vnav.IsLifestreamAvailable);
+        DrawDependencyLabel("Lifestream >= 2.5.4.15", vnav.IsLifestreamAvailable, vnav.LifestreamStatus);
     }
 
-    private static void DrawDependencyLabel(string name, bool installed)
+    private static void DrawDependencyLabel(string name, bool installed, string? status = null)
     {
         ImGui.PushStyleColor(ImGuiCol.Text, installed ? new Vector4(0.35f, 1f, 0.45f, 1f) : new Vector4(1f, 0.35f, 0.35f, 1f));
-        ImGui.TextUnformatted($"{name}: {(installed ? "已安装" : "未安装")}");
+        ImGui.TextUnformatted($"{name}: {status ?? (installed ? "已安装" : "未安装")}");
         ImGui.PopStyleColor();
     }
 
@@ -291,21 +291,58 @@ internal sealed class MainWindow : Window
         }
 
         ImGui.SameLine();
-        ImGui.SetNextItemWidth(90f);
-        var autoReturnDelaySeconds = Math.Max(0, config.AutoReturnDelaySeconds);
-        if (ImGui.InputInt("结束后回营地延迟(秒)", ref autoReturnDelaySeconds))
+        var autoPrioritizeCe = config.AutoPrioritizeCe;
+        if (ImGui.Checkbox("优先 CE", ref autoPrioritizeCe))
         {
-            config.AutoReturnDelaySeconds = Math.Clamp(autoReturnDelaySeconds, 0, 600);
+            config.AutoPrioritizeCe = autoPrioritizeCe;
             config.Save();
         }
 
-        ImGui.SameLine();
-        ImGui.SetNextItemWidth(90f);
-        var autoSkipProgressPercent = Math.Clamp(config.AutoSkipProgressPercent, 0, 100);
-        if (ImGui.InputInt("战斗进度≥X%不前往", ref autoSkipProgressPercent))
+        ImGui.Spacing();
+        ImGui.TextDisabled("自动参数");
+        if (ImGui.BeginTable("##auto_nav_settings", 3, ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp))
         {
-            config.AutoSkipProgressPercent = Math.Clamp(autoSkipProgressPercent, 0, 100);
-            config.Save();
+            ImGui.TableSetupColumn("出现后导航");
+            ImGui.TableSetupColumn("结束后回营地");
+            ImGui.TableSetupColumn("战斗进度跳过");
+            ImGui.TableHeadersRow();
+
+            ImGui.TableNextRow();
+
+            ImGui.TableSetColumnIndex(0);
+            ImGui.TextUnformatted("导航延迟");
+            ImGui.SetNextItemWidth(110f);
+            var autoNavigationStartDelaySeconds = Math.Max(0, config.AutoNavigationStartDelaySeconds);
+            if (ImGui.InputInt("秒##auto_nav_start_delay", ref autoNavigationStartDelaySeconds))
+            {
+                config.AutoNavigationStartDelaySeconds = Math.Clamp(autoNavigationStartDelaySeconds, 0, 600);
+                config.Save();
+            }
+            ImGui.TextDisabled("目标出现后等待 X 秒再前往");
+
+            ImGui.TableSetColumnIndex(1);
+            ImGui.TextUnformatted("回营地延迟");
+            ImGui.SetNextItemWidth(110f);
+            var autoReturnDelaySeconds = Math.Max(0, config.AutoReturnDelaySeconds);
+            if (ImGui.InputInt("秒##auto_return_delay", ref autoReturnDelaySeconds))
+            {
+                config.AutoReturnDelaySeconds = Math.Clamp(autoReturnDelaySeconds, 0, 600);
+                config.Save();
+            }
+            ImGui.TextDisabled("目标结束后等待 X 秒再回营地");
+
+            ImGui.TableSetColumnIndex(2);
+            ImGui.TextUnformatted("跳过进度");
+            ImGui.SetNextItemWidth(110f);
+            var autoSkipProgressPercent = Math.Clamp(config.AutoSkipProgressPercent, 0, 100);
+            if (ImGui.InputInt("%##auto_skip_progress", ref autoSkipProgressPercent))
+            {
+                config.AutoSkipProgressPercent = Math.Clamp(autoSkipProgressPercent, 0, 100);
+                config.Save();
+            }
+            ImGui.TextDisabled("战斗进度 >= X% 时不再前往新目标");
+
+            ImGui.EndTable();
         }
 
         if (!ImGui.CollapsingHeader("自动寻路"))
@@ -328,24 +365,19 @@ internal sealed class MainWindow : Window
         ImGui.SameLine();
         DrawAutoTargetBulkToggle("FATE", fateBosses.Select(boss => (uint)boss.FateId!.Value));
         ImGui.SameLine();
-        var autoPrioritizeCe = config.AutoPrioritizeCe;
-        if (ImGui.Checkbox("优先 CE", ref autoPrioritizeCe))
-        {
-            config.AutoPrioritizeCe = autoPrioritizeCe;
-            config.Save();
-        }
-        ImGui.SameLine();
         if (ImGui.SmallButton(config.HasAutoReturnStandbyPoint ? "更新待命点" : "记录待命点"))
         {
             var pos = DalamudApi.ObjectTable.LocalPlayer?.Position;
-            if (pos.HasValue)
+            var currentMap = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, config);
+            if (pos.HasValue && currentMap.HasValue)
             {
                 config.AutoReturnStandbyX = pos.Value.X;
                 config.AutoReturnStandbyY = pos.Value.Y;
                 config.AutoReturnStandbyZ = pos.Value.Z;
+                config.AutoReturnStandbyMap = currentMap.Value;
                 config.HasAutoReturnStandbyPoint = true;
                 config.Save();
-                LogHelper.Chat($"已记录待命点 ({pos.Value.X:F1}, {pos.Value.Y:F1}, {pos.Value.Z:F1})");
+                LogHelper.Chat($"已记录待命点 {GetMapName(currentMap.Value)} ({pos.Value.X:F1}, {pos.Value.Y:F1}, {pos.Value.Z:F1})");
             }
         }
         if (config.HasAutoReturnStandbyPoint)

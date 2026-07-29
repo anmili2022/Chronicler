@@ -15,12 +15,14 @@ public sealed class PluginConfiguration : IPluginConfiguration
     public bool ListenChat = true;
     public bool AutoDetectAppearances = true;
     public bool AutoNavigationEnabled = false;
+    public int AutoNavigationStartDelaySeconds = 0;
     public int AutoReturnDelaySeconds = 5;
     public int AutoSkipProgressPercent = 80;
     public bool AutoPrioritizeCe = true;
     public float AutoReturnStandbyX = 0;
     public float AutoReturnStandbyY = 0;
     public float AutoReturnStandbyZ = 0;
+    public ExpeditionMap AutoReturnStandbyMap = ExpeditionMap.South;
     public bool HasAutoReturnStandbyPoint = false;
     public string AutoNavigationTargetType = string.Empty;
     public uint AutoNavigationTargetId = 0;

@@ -158,8 +158,12 @@ internal sealed class FloatingStatusWindow : Window
             return false;
 
         ImGui.TextUnformatted("CE");
+        var currentMap = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, config);
         foreach (var ev in events)
         {
+            var boss = currentMap.HasValue
+                ? BossCatalog.MatchCriticalEncounter(currentMap.Value, ev.DynamicEventId, ev.Name.ToString())
+                : null;
             ImGui.PushStyleColor(ImGuiCol.Text, Yellow);
             ImGui.TextUnformatted(ev.Name.ToString());
             ImGui.PopStyleColor();
@@ -171,7 +175,7 @@ internal sealed class FloatingStatusWindow : Window
                 ? $"{FormatCeState(ev.State)} {ev.Progress}% {FormatSeconds(ev.SecondsLeft)} (报名 {registerRemaining}秒)"
                 : $"{FormatCeState(ev.State)} {ev.Progress}% {FormatSeconds(ev.SecondsLeft)}");
             ImGui.SameLine();
-            DrawFlagNavButton(ev.MapMarker.Position, $"ce-{ev.DynamicEventId}", randomRadius: ev.MapMarker.Radius);
+            DrawFlagNavButton(ev.MapMarker.Position, $"ce-{ev.DynamicEventId}", boss == null ? null : VnavService.GetPreferredShardIdForCriticalEncounter(currentMap!.Value, boss.Index), ev.MapMarker.Radius);
         }
 
         return true;

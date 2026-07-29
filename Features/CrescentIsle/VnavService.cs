@@ -12,6 +12,8 @@ namespace Chronicler;
 
 internal sealed class VnavService : IDisposable
 {
+    private static readonly Version MinimumLifestreamVersion = new(2, 5, 4, 15);
+    private readonly IDalamudPluginInterface pluginInterface;
     private readonly PluginConfiguration config;
     private readonly ICallGateSubscriber<bool> isReady;
     private readonly ICallGateSubscriber<Vector3, bool, bool> pathfindAndMoveTo;
@@ -19,13 +21,14 @@ internal sealed class VnavService : IDisposable
     private readonly ICallGateSubscriber<object> stop;
 
     // 可选 Lifestream IPC（不强制依赖）
-    private readonly ICallGateSubscriber<uint, bool>? aethernetTeleportById;
-    private readonly ICallGateSubscriber<uint, bool>? aethernetTeleportByPlaceNameId;
-    private readonly ICallGateSubscriber<bool>? lsIsBusy;
-    private readonly ICallGateSubscriber<object>? lsAbort;
-    private readonly ICallGateSubscriber<uint>? lsGetActiveAetheryte;
-    private readonly ICallGateSubscriber<uint>? lsGetActiveCustomAetheryte;
-    private readonly bool lifestreamAvailable;
+    private ICallGateSubscriber<uint, bool>? aethernetTeleportById;
+    private ICallGateSubscriber<uint, bool>? aethernetTeleportByPlaceNameId;
+    private ICallGateSubscriber<bool>? lsIsBusy;
+    private ICallGateSubscriber<object>? lsAbort;
+    private ICallGateSubscriber<uint>? lsGetActiveAetheryte;
+    private ICallGateSubscriber<uint>? lsGetActiveCustomAetheryte;
+    private bool lifestreamAvailable;
+    private string lifestreamStatus = "未安装";
 
     // 全岛传送点 (PlaceNameId=0 表示暂未找到 ID，跳过传送)
     private static readonly List<(ExpeditionMap Map, Vector3 Pos, uint Id, bool IsPlaceNameId)> Shards = new()
@@ -47,31 +50,65 @@ internal sealed class VnavService : IDisposable
 
     public VnavService(IDalamudPluginInterface pi, PluginConfiguration config)
     {
+        pluginInterface = pi;
         this.config = config;
         isReady = pi.GetIpcSubscriber<bool>("vnavmesh.Nav.IsReady");
         pathfindAndMoveTo = pi.GetIpcSubscriber<Vector3, bool, bool>("vnavmesh.SimpleMove.PathfindAndMoveTo");
         nearestPoint = pi.GetIpcSubscriber<Vector3, float, float, Vector3?>("vnavmesh.Query.Mesh.NearestPoint");
         stop = pi.GetIpcSubscriber<object>("vnavmesh.Path.Stop");
 
-        try
-        {
-            lsAbort = pi.GetIpcSubscriber<object>("Lifestream.Abort");
-            lsIsBusy = pi.GetIpcSubscriber<bool>("Lifestream.IsBusy");
-            lsGetActiveAetheryte = pi.GetIpcSubscriber<uint>("Lifestream.GetActiveAetheryte");
-            lsGetActiveCustomAetheryte = pi.GetIpcSubscriber<uint>("Lifestream.GetActiveCustomAetheryte");
-            aethernetTeleportById = pi.GetIpcSubscriber<uint, bool>("Lifestream.AethernetTeleportById");
-            aethernetTeleportByPlaceNameId = pi.GetIpcSubscriber<uint, bool>("Lifestream.AethernetTeleportByPlaceNameId");
-            var dummy = lsIsBusy.InvokeFunc();
-            lifestreamAvailable = true;
-            LogHelper.Info("Lifestream IPC 可用");
-        }
-        catch
-        {
-            LogHelper.Info("Lifestream 未安装，不使用传送导航");
-        }
+        TryInitializeLifestream();
 
         DalamudApi.Framework.Update += OnFrameworkUpdate;
         DalamudApi.AddonLifecycle.RegisterListener(AddonEvent.PostSetup, "SelectYesno", OnSelectYesnoPostSetup);
+    }
+
+    private void TryInitializeLifestream()
+    {
+        if (lifestreamAvailable)
+            return;
+
+        var lifestreamPlugin = pluginInterface.InstalledPlugins.FirstOrDefault(plugin => plugin.InternalName == "Lifestream");
+        if (lifestreamPlugin == null)
+        {
+            SetLifestreamStatus("未安装", "Lifestream 未安装，不使用传送导航");
+        }
+        else if (!lifestreamPlugin.IsLoaded)
+        {
+            SetLifestreamStatus($"已安装 {lifestreamPlugin.Version}，未加载", "Lifestream 未加载，不使用传送导航");
+        }
+        else if (lifestreamPlugin.Version < MinimumLifestreamVersion)
+        {
+            SetLifestreamStatus($"版本过低 {lifestreamPlugin.Version}，需要 {MinimumLifestreamVersion}+", $"Lifestream 版本过低: {lifestreamPlugin.Version}，需要 {MinimumLifestreamVersion}+，不使用传送导航");
+        }
+        else
+        {
+            try
+            {
+                lsAbort = pluginInterface.GetIpcSubscriber<object>("Lifestream.Abort");
+                lsIsBusy = pluginInterface.GetIpcSubscriber<bool>("Lifestream.IsBusy");
+                lsGetActiveAetheryte = pluginInterface.GetIpcSubscriber<uint>("Lifestream.GetActiveAetheryte");
+                lsGetActiveCustomAetheryte = pluginInterface.GetIpcSubscriber<uint>("Lifestream.GetActiveCustomAetheryte");
+                aethernetTeleportById = pluginInterface.GetIpcSubscriber<uint, bool>("Lifestream.AethernetTeleportById");
+                aethernetTeleportByPlaceNameId = pluginInterface.GetIpcSubscriber<uint, bool>("Lifestream.AethernetTeleportByPlaceNameId");
+                var dummy = lsIsBusy.InvokeFunc();
+                lifestreamAvailable = true;
+                SetLifestreamStatus($"已加载 {lifestreamPlugin.Version}", $"Lifestream IPC 可用，版本 {lifestreamPlugin.Version}");
+            }
+            catch
+            {
+                SetLifestreamStatus("IPC 不可用", "Lifestream IPC 不可用，不使用传送导航");
+            }
+        }
+    }
+
+    private void SetLifestreamStatus(string status, string logMessage)
+    {
+        if (lifestreamStatus == status)
+            return;
+
+        lifestreamStatus = status;
+        LogHelper.Info(logMessage);
     }
 
     private Vector3? pendingTarget;
@@ -104,14 +141,34 @@ internal sealed class VnavService : IDisposable
         }
     }
 
-    public bool IsLifestreamAvailable => lifestreamAvailable;
+    public bool IsLifestreamAvailable
+    {
+        get
+        {
+            TryInitializeLifestream();
+            return lifestreamAvailable;
+        }
+    }
+
+    public string LifestreamStatus
+    {
+        get
+        {
+            TryInitializeLifestream();
+            return lifestreamStatus;
+        }
+    }
 
     public static uint? GetPreferredShardIdForFate(ushort fateId)
         => fateId == 2075 ? 69420406u : null;
 
+    public static uint? GetPreferredShardIdForCriticalEncounter(ExpeditionMap map, int bossIndex)
+        => map == ExpeditionMap.North && bossIndex == 3 ? 69420406u : null;
+
     public unsafe void NavigateTo(Vector3 dest, bool fly = false, uint? preferredShardId = null)
     {
         ClearPendingNavigation();
+        TryInitializeLifestream();
 
         try
         {

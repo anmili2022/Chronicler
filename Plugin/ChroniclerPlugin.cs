@@ -15,9 +15,16 @@ public sealed partial class ChroniclerPlugin : IDalamudPlugin
     private DateTime lastFrameworkErrorUtc = DateTime.MinValue;
     private DateTime lastAutoNavigationUpdateUtc = DateTime.MinValue;
     private string activeAutoNavigationKey = string.Empty;
+    private string pendingAutoNavigationKey = string.Empty;
+    private DateTime? pendingAutoNavigationDueUtc;
     private bool autoNavigationReturned;
     private DateTime? autoReturnDueUtc;
     private DateTime? pendingStandbyNavUtc;
+    private DateTime? pendingStandbyNavStartedUtc;
+    private DateTime? pendingStandbyBaseCampUtc;
+    private ExpeditionMap? pendingAutoReturnMap;
+    private DateTime? pendingAutoReturnStartedUtc;
+    private DateTime? pendingAutoReturnBaseCampUtc;
 
     public string Name => "新月岛史官";
 
