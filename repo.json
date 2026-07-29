@@ -5,7 +5,7 @@
         "Description": "进入新月岛后自动记录南征/北征 CE/FATE 出现时间，支持导入/导出 xyd.zzmelon.com 分享码，生成喊话，并监听游戏内喊话自动同步状态。导航传送功能需要 Lifestream 2.5.4.15 以上。",
         "IconUrl": "https://raw.githubusercontent.com/anmili2022/Chronicler/main/images/icon.png",
         "InternalName": "Chronicler",
-        "AssemblyVersion": "0.2.0.8",
+        "AssemblyVersion": "0.2.0.9",
         "RepoUrl": "https://github.com/anmili2022/Chronicler",
         "ApplicableVersion": "any",
         "DalamudApiLevel": 15,
@@ -18,9 +18,9 @@
         ],
         "IsHide": false,
         "IsTestingExclusive": false,
-        "DownloadLinkInstall": "https://github.com/anmili2022/Chronicler/releases/download/v0.2.0.8/Chronicler.zip",
-        "DownloadLinkTesting": "https://github.com/anmili2022/Chronicler/releases/download/v0.2.0.8/Chronicler.zip",
-        "DownloadLinkUpdate": "https://github.com/anmili2022/Chronicler/releases/download/v0.2.0.8/Chronicler.zip",
-        "LastUpdated": "1785358150"
+        "DownloadLinkInstall": "https://github.com/anmili2022/Chronicler/releases/download/v0.2.0.9/Chronicler.zip",
+        "DownloadLinkTesting": "https://github.com/anmili2022/Chronicler/releases/download/v0.2.0.9/Chronicler.zip",
+        "DownloadLinkUpdate": "https://github.com/anmili2022/Chronicler/releases/download/v0.2.0.9/Chronicler.zip",
+        "LastUpdated": "1785362942"
     }
 ]

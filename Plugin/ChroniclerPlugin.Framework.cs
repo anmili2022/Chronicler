@@ -45,7 +45,7 @@ public sealed partial class ChroniclerPlugin
 
     private unsafe void UpdateAutoNavigation(ExpeditionMap? currentMap)
     {
-        if (!Configuration.AutoNavigationEnabled || !currentMap.HasValue)
+        if (!Configuration.AutoNavigationEnabled)
         {
             activeAutoNavigationKey = string.Empty;
             ClearPendingAutoNavigation();
@@ -58,6 +58,9 @@ public sealed partial class ChroniclerPlugin
             ClearPendingStandbyNavigation();
             return;
         }
+
+        if (!currentMap.HasValue)
+            return;
 
         if (!autoNavWasEnabled)
         {
@@ -90,32 +93,15 @@ public sealed partial class ChroniclerPlugin
 
         if (DalamudApi.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.Unconscious])
         {
-            activeAutoNavigationKey = string.Empty;
             ClearPendingAutoNavigation();
-            autoNavigationReturned = false;
-            autoReturnDueUtc = null;
-            ClearAutoReturnGate();
             vnav.Stop();
-            wasDead = true;
-            postReturnIdleUtc = null;
+            wasDead = false;
             return;
         }
 
         if (wasDead)
         {
             wasDead = false;
-            activeAutoNavigationKey = string.Empty;
-            ClearPendingAutoNavigation();
-            autoNavigationReturned = false;
-            autoReturnDueUtc = null;
-            ClearAutoReturnGate();
-            LogHelper.Chat("全自动: 已复活，返回营地重新扫描。");
-            vnav.ReturnToBaseCamp();
-            pendingAutoReturnMap = currentMap;
-            pendingAutoReturnStartedUtc = DateTime.UtcNow;
-            pendingAutoReturnBaseCampUtc = null;
-            pendingAutoReturnSawBetweenAreas = false;
-            return;
         }
 
         if (DalamudApi.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.InCombat])
@@ -228,7 +214,8 @@ public sealed partial class ChroniclerPlugin
             return DalamudApi.FateTable
                 .Where(fate => fate != null && DalamudApi.FateTable.IsValid(fate))
                 .Any(fate => fate!.FateId == fateId
-                             && (fate.State is FateState.Preparing or FateState.Running
+                             && (fate.State == FateState.Preparing
+                                 || (fate.State == FateState.Running && fate.Progress < 100)
                                  || (BossCatalog.IsMagicPotFateId(fate.FateId) && fate.State == FateState.Ending)));
         }
 
@@ -383,7 +370,13 @@ public sealed partial class ChroniclerPlugin
 
         var now = DateTime.UtcNow;
         var delaySeconds = Math.Max(0, Configuration.AutoReturnDelaySeconds);
-        autoReturnDueUtc ??= now + TimeSpan.FromSeconds(delaySeconds);
+        if (!autoReturnDueUtc.HasValue)
+        {
+            autoReturnDueUtc = now + TimeSpan.FromSeconds(delaySeconds);
+            vnav.Stop();
+            LogHelper.Chat(delaySeconds > 0 ? $"全自动: 目标已结束，延迟 {delaySeconds} 秒后回营地。" : "全自动: 目标已结束，回营地等待下一次。");
+        }
+
         if (now < autoReturnDueUtc.Value)
             return;
 
@@ -391,7 +384,6 @@ public sealed partial class ChroniclerPlugin
         activeAutoNavigationKey = string.Empty;
         ClearPendingAutoNavigation();
         autoReturnDueUtc = null;
-        LogHelper.Chat(delaySeconds > 0 ? $"全自动: 目标已结束，延迟 {delaySeconds} 秒后回营地。" : "全自动: 目标已结束，回营地等待下一次。");
         vnav.ReturnToBaseCamp();
         pendingAutoReturnMap = map;
         pendingAutoReturnStartedUtc = DateTime.UtcNow;

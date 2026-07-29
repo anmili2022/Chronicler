@@ -16,6 +16,6 @@
   ],
   "InternalName": "Chronicler",
   "ApplicableVersion": "any",
-  "AssemblyVersion": "0.2.0.8",
+  "AssemblyVersion": "0.2.0.9",
   "DalamudApiLevel": 15
 }
