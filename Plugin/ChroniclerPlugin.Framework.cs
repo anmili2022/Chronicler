@@ -254,24 +254,47 @@ public sealed partial class ChroniclerPlugin
 
     private bool TryNavigateAutoFate(ExpeditionMap map)
     {
+        var visibleFates = DalamudApi.FateTable
+            .Where(fate => fate != null && DalamudApi.FateTable.IsValid(fate))
+            .ToList();
+
+        if (visibleFates.Count > 0)
+        {
+            var fateInfo = string.Join(", ", visibleFates
+                .Where(f => f != null)
+                .Select(f => $"{f!.FateId}({(int)f.State}:{f.Progress})"));
+            LogHelper.Chat($"导航调试: 活跃FATE: {fateInfo}");
+        }
+
         foreach (var boss in BossCatalog.GetFates(map))
         {
             if (!boss.FateId.HasValue || Configuration.DisabledAutoFateIds.Contains(boss.FateId.Value))
                 continue;
 
-            var fate = DalamudApi.FateTable
-                .Where(fate => fate != null && DalamudApi.FateTable.IsValid(fate))
-                .FirstOrDefault(fate => fate!.FateId == boss.FateId && fate.State is FateState.Preparing or FateState.Running);
-
-            if (fate != null)
+            var match = visibleFates.FirstOrDefault(f => f!.FateId == boss.FateId.Value);
+            if (match == null)
             {
-                var key = $"FATE:{boss.FateId.Value}";
-                if (activeAutoNavigationKey != key && ShouldSkipAutoTarget(fate.State == FateState.Running, fate.Progress))
-                    continue;
-
-                NavigateAutoTargetOnce(key, $"FATE {boss.Abbreviation}", fate.Position, VnavService.GetPreferredShardIdForFate(fate.FateId), dismountOnArrival: true);
-                return true;
+                LogHelper.Chat($"导航调试: 目录 {boss.Abbreviation}(FateId={boss.FateId}) 无匹配");
+                continue;
             }
+
+            if (match.State is not FateState.Preparing and not FateState.Running
+                && !(BossCatalog.IsMagicPotFateId(match.FateId) && match.State == FateState.Ending))
+            {
+                LogHelper.Chat($"导航调试: {boss.Abbreviation}(FateId={boss.FateId}) 状态={match.State} 跳过");
+                continue;
+            }
+
+            var key = $"FATE:{boss.FateId.Value}";
+            if (activeAutoNavigationKey != key && ShouldSkipAutoTarget(match.State == FateState.Running, match.Progress))
+            {
+                LogHelper.Chat($"导航调试: {boss.Abbreviation} 进度 {match.Progress} ≥ {Configuration.AutoSkipProgressPercent} 跳过");
+                continue;
+            }
+
+            LogHelper.Chat($"导航调试: 匹配到 {boss.Abbreviation}(FateId={boss.FateId}), 开始导航");
+            NavigateAutoTargetOnce(key, $"FATE {boss.Abbreviation}", match.Position, VnavService.GetPreferredShardIdForFate(match.FateId), dismountOnArrival: true);
+            return true;
         }
 
         return false;
