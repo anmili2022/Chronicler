@@ -90,8 +90,31 @@ internal sealed class FloatingStatusWindow : Window
                 config.Save();
                 LogHelper.Chat(config.AutoNavigationEnabled ? "全自动模式已开启。" : "全自动模式已关闭。");
             }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("CE 提升知见等级快\nFATE 提升辅助职业等级快");
+            ImGui.SameLine();
+            if (ImGui.SmallButton("待命点"))
+            {
+                var pos = DalamudApi.ObjectTable.LocalPlayer?.Position;
+                var currentMap = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, config);
+                if (pos.HasValue && currentMap.HasValue)
+                {
+                    config.AutoReturnStandbyX = pos.Value.X;
+                    config.AutoReturnStandbyY = pos.Value.Y;
+                    config.AutoReturnStandbyZ = pos.Value.Z;
+                    config.AutoReturnStandbyMap = currentMap.Value;
+                    config.HasAutoReturnStandbyPoint = true;
+                    config.Save();
+                    LogHelper.Chat($"已记录待命点 {FormatMapName(currentMap.Value)} ({pos.Value.X:F1}, {pos.Value.Y:F1}, {pos.Value.Z:F1})");
+                }
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("记录、更新待命点");
         }
     }
+
+    private static string FormatMapName(ExpeditionMap map)
+        => map == ExpeditionMap.South ? "南征" : "北征";
 
     private ImGuiWindowFlags BuildFlags()
     {
@@ -151,7 +174,7 @@ internal sealed class FloatingStatusWindow : Window
             ImGui.SameLine();
             ImGui.TextUnformatted($"{FormatFateState(fate.State)} {fate.Progress}% {FormatSeconds(fate.TimeRemaining)}");
             ImGui.SameLine();
-            DrawFlagNavButton(fate.Position, $"fate-{fate.FateId}", VnavService.GetPreferredShardIdForFate(fate.FateId), dismountOnArrival: boss != null && BossCatalog.IsMagicPot(boss));
+            DrawFlagNavButton(fate.Position, $"fate-{fate.FateId}", VnavService.GetPreferredShardIdForFate(fate.FateId), dismountOnArrival: true);
         }
 
         return true;
@@ -191,7 +214,7 @@ internal sealed class FloatingStatusWindow : Window
                 ? $"{FormatCeState(ev.State)} {ev.Progress}% {FormatSeconds(ev.SecondsLeft)} (报名 {registerRemaining}秒)"
                 : $"{FormatCeState(ev.State)} {ev.Progress}% {FormatSeconds(ev.SecondsLeft)}");
             ImGui.SameLine();
-            DrawFlagNavButton(ev.MapMarker.Position, $"ce-{ev.DynamicEventId}", boss == null ? null : VnavService.GetPreferredShardIdForCriticalEncounter(currentMap!.Value, boss.Index), ev.MapMarker.Radius);
+            DrawFlagNavButton(ev.MapMarker.Position, $"ce-{ev.DynamicEventId}", boss == null ? null : VnavService.GetPreferredShardIdForCriticalEncounter(currentMap!.Value, boss.Index), ev.MapMarker.Radius, dismountOnArrival: true);
         }
 
         return true;

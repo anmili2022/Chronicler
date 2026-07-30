@@ -22,6 +22,10 @@ internal static class LogHelper
         if (message.StartsWith("导航调试:", StringComparison.Ordinal) && config?.ShowNavigationDebug != true)
             return;
 
+        if ((message.StartsWith("全自动:", StringComparison.Ordinal) || message.StartsWith("全自动模式", StringComparison.Ordinal))
+            && config?.ShowAutoNavigationStatusMessages == false)
+            return;
+
         PrintPluginMessage(message);
     }
 

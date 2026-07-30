@@ -26,6 +26,7 @@ public sealed partial class ChroniclerPlugin : IDalamudPlugin
     private DateTime? pendingAutoReturnStartedUtc;
     private DateTime? pendingAutoReturnBaseCampUtc;
     private bool pendingAutoReturnSawBetweenAreas;
+    private int pendingAutoReturnRetryCount;
     private bool wasDead;
     private DateTime? postReturnIdleUtc;
     private bool autoNavWasEnabled;

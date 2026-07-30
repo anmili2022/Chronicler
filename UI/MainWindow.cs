@@ -113,6 +113,14 @@ internal sealed class MainWindow : Window
             config.Save();
         }
 
+        ImGui.SameLine();
+        var showAutoNavigationStatusMessages = config.ShowAutoNavigationStatusMessages;
+        if (ImGui.Checkbox("全自动提示", ref showAutoNavigationStatusMessages))
+        {
+            config.ShowAutoNavigationStatusMessages = showAutoNavigationStatusMessages;
+            config.Save();
+        }
+
         var showFloating = config.ShowFloatingStatusWindow;
         if (ImGui.Checkbox("显示 FATE/CE 悬浮窗", ref showFloating))
         {

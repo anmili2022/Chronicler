@@ -74,6 +74,7 @@ public sealed partial class ChroniclerPlugin
                 pendingAutoReturnStartedUtc = DateTime.UtcNow;
                 pendingAutoReturnBaseCampUtc = null;
                 pendingAutoReturnSawBetweenAreas = false;
+                pendingAutoReturnRetryCount = 0;
                 if (Configuration.HasAutoReturnStandbyPoint)
                 {
                     pendingStandbyNavStartedUtc = DateTime.UtcNow;
@@ -159,6 +160,17 @@ public sealed partial class ChroniclerPlugin
         if (pendingAutoReturnStartedUtc.HasValue
             && DateTime.UtcNow - pendingAutoReturnStartedUtc.Value > TimeSpan.FromSeconds(45))
         {
+            if (pendingAutoReturnRetryCount < 1)
+            {
+                pendingAutoReturnRetryCount++;
+                pendingAutoReturnStartedUtc = DateTime.UtcNow;
+                pendingAutoReturnBaseCampUtc = null;
+                pendingAutoReturnSawBetweenAreas = false;
+                LogHelper.Chat("全自动: 等待回营地超时，重试一次。");
+                vnav.ReturnToBaseCamp();
+                return true;
+            }
+
             ClearAutoReturnGate();
             LogHelper.Chat("全自动: 等待回营地超时，恢复扫描目标。");
             return false;
@@ -204,6 +216,7 @@ public sealed partial class ChroniclerPlugin
         pendingAutoReturnStartedUtc = null;
         pendingAutoReturnBaseCampUtc = null;
         pendingAutoReturnSawBetweenAreas = false;
+        pendingAutoReturnRetryCount = 0;
     }
 
     private bool IsActiveAutoTargetAvailable(ExpeditionMap map)
@@ -389,6 +402,7 @@ public sealed partial class ChroniclerPlugin
         pendingAutoReturnStartedUtc = DateTime.UtcNow;
         pendingAutoReturnBaseCampUtc = null;
         pendingAutoReturnSawBetweenAreas = false;
+        pendingAutoReturnRetryCount = 0;
 
         if (Configuration.HasAutoReturnStandbyPoint)
         {
