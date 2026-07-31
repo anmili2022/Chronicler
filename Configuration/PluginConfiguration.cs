@@ -37,8 +37,15 @@ public sealed class PluginConfiguration : IPluginConfiguration
     public XivChatType MessageChatType = XivChatType.Echo;
     public ExpeditionMap LastSelectedMap = ExpeditionMap.South;
     public string LastIslandId = string.Empty;
+    public uint TuliyollalTerritoryType = 1185;
+    public uint SolutionNineTerritoryType = 1278;
     public List<uint> SouthTerritoryIds = new() { 1252 };
     public List<uint> NorthTerritoryIds = new() { 1346 };
+    public float CrescentIsleEntranceX = -76.86f;
+    public float CrescentIsleEntranceY = 5f;
+    public float CrescentIsleEntranceZ = -14.54f;
+    public uint TuliyollalAetheryteId = 216;
+    public uint OccultVillageAethernetId = 239;
     public List<BossRecordDto> Records = new();
     public List<FateObservationDto> FateObservations = new();
     public List<CeAnnouncementDto> CeAnnouncements = new();

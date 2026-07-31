@@ -19,10 +19,15 @@ public sealed partial class ChroniclerPlugin
 
     private void OnHandleableChatMessage(object message)
     {
-        if (isDisposing || !Configuration.ListenChat)
+        if (isDisposing)
             return;
 
         var text = ExtractChatMessageText(message);
+        currencyGainTracker.ObserveChat(text);
+
+        if (!Configuration.ListenChat)
+            return;
+
         ObserveIslandId(text);
         ObserveCeAnnouncement(text);
 

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Numerics;
+using System.Text;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Game.ClientState.Fates;
 using Dalamud.Interface.Windowing;
@@ -12,8 +13,7 @@ internal sealed class MainWindow : Window
     private readonly PluginConfiguration config;
     private readonly CrescentStateService state;
     private readonly VnavService vnav;
-    private string importText = string.Empty;
-    private string outputText = string.Empty;
+    private string sharedText = string.Empty;
     private string statusText = string.Empty;
     private string southTerritoriesText;
     private string northTerritoriesText;
@@ -40,40 +40,69 @@ internal sealed class MainWindow : Window
     {
         var territory = DalamudApi.ClientState.TerritoryType;
         var resolvedMap = TerritoryGate.ResolveMap(territory, config);
-        if (resolvedMap.HasValue && config.LastSelectedMap != resolvedMap.Value)
-        {
-            config.LastSelectedMap = resolvedMap.Value;
-            config.Save();
-        }
 
-        DrawDependencyStatus();
+        DrawTopBar(territory, resolvedMap);
         ImGui.Separator();
-        DrawStatus(territory, resolvedMap);
-        ImGui.Separator();
-        DrawAutoNavigation(resolvedMap);
-        ImGui.Separator();
-        if (ImGui.CollapsingHeader("新月岛史官-记录、喊话同步、分享##main_sections"))
+
+        if (!ImGui.BeginTabBar("##chronicler_tabs"))
+            return;
+
+        if (ImGui.BeginTabItem("新月岛史官"))
         {
             DrawMapSelector();
             ImGui.Separator();
             DrawBossTable(config.LastSelectedMap);
             ImGui.Separator();
             DrawImportExport(config.LastSelectedMap);
-            ImGui.Separator();
-            DrawTerritorySettings();
+            ImGui.EndTabItem();
         }
 
-        ImGui.Separator();
-        DrawDebugSections(config.LastSelectedMap);
+        if (ImGui.BeginTabItem("自动寻路"))
+        {
+            DrawAutoNavigation(resolvedMap);
+            ImGui.EndTabItem();
+        }
+
+        if (ImGui.BeginTabItem("设置"))
+        {
+            DrawSettings();
+            ImGui.Separator();
+            DrawTerritorySettings();
+            ImGui.EndTabItem();
+        }
+
+        if (ImGui.BeginTabItem("DEBUG"))
+        {
+            DrawDebugSettings();
+            ImGui.Separator();
+            DrawDebugSections(config.LastSelectedMap);
+            ImGui.EndTabItem();
+        }
+
+        ImGui.EndTabBar();
     }
 
-    private void DrawStatus(uint territory, ExpeditionMap? resolvedMap)
+    private void DrawTopBar(uint territory, ExpeditionMap? resolvedMap)
     {
+        DrawDependencyStatus();
         ImGui.TextUnformatted($"当前 TerritoryType: {territory}");
         ImGui.SameLine();
         ImGui.TextUnformatted($"当前岛 ID: {GetCurrentIslandId()}");
+        ImGui.SameLine();
         ImGui.TextUnformatted($"识别地图: {(resolvedMap.HasValue ? GetMapName(resolvedMap.Value) : "未识别")}");
 
+        if (ImGui.Button("前往新月岛入口"))
+            vnav.GoToCrescentIsle();
+        ImGui.SameLine();
+        if (ImGui.Button("新月岛：北征之章 信息整理"))
+            OpenUrl("https://bbs.nga.cn/read.php?tid=47269383");
+
+        if (!string.IsNullOrWhiteSpace(statusText))
+            ImGui.TextDisabled(statusText);
+    }
+
+    private void DrawSettings()
+    {
         var enabled = config.Enabled;
         if (ImGui.Checkbox("启用插件", ref enabled))
         {
@@ -94,22 +123,6 @@ internal sealed class MainWindow : Window
         if (ImGui.Checkbox("自动记录出现", ref autoDetect))
         {
             config.AutoDetectAppearances = autoDetect;
-            config.Save();
-        }
-
-        ImGui.SameLine();
-        var showDebugSections = config.ShowDebugSections;
-        if (ImGui.Checkbox("显示调试区", ref showDebugSections))
-        {
-            config.ShowDebugSections = showDebugSections;
-            config.Save();
-        }
-
-        ImGui.SameLine();
-        var showNavigationDebug = config.ShowNavigationDebug;
-        if (ImGui.Checkbox("导航调试", ref showNavigationDebug))
-        {
-            config.ShowNavigationDebug = showNavigationDebug;
             config.Save();
         }
 
@@ -135,16 +148,31 @@ internal sealed class MainWindow : Window
             config.LockFloatingStatusWindow = lockFloating;
             config.Save();
         }
+    }
 
-        if (!string.IsNullOrWhiteSpace(statusText))
-            ImGui.TextDisabled(statusText);
-
-        if (ImGui.Button("新月岛：北征之章 信息整理"))
-            OpenUrl("https://bbs.nga.cn/read.php?tid=47269383");
+    private void DrawDebugSettings()
+    {
+        var showDebugSections = config.ShowDebugSections;
+        if (ImGui.Checkbox("显示调试区", ref showDebugSections))
+        {
+            config.ShowDebugSections = showDebugSections;
+            config.Save();
+        }
 
         ImGui.SameLine();
+        var showNavigationDebug = config.ShowNavigationDebug;
+        if (ImGui.Checkbox("导航调试", ref showNavigationDebug))
+        {
+            config.ShowNavigationDebug = showNavigationDebug;
+            config.Save();
+        }
+
         if (ImGui.Button("显示当前位置/CE/FATE距离"))
             UpdateDistanceDebugLines();
+
+        ImGui.SameLine();
+        if (ImGui.Button("复制全部调试信息"))
+            CopyAllDebugInfo(config.LastSelectedMap);
 
         foreach (var line in distanceDebugLines)
             ImGui.TextDisabled(line);
@@ -223,6 +251,13 @@ internal sealed class MainWindow : Window
         }
 
         ImGui.SameLine();
+        if (ImGui.SmallButton("清空所有"))
+        {
+            state.ClearMap(config.LastSelectedMap);
+            statusText = $"已清空 {GetMapName(config.LastSelectedMap)} 所有 Boss 时间记录。";
+        }
+
+        ImGui.SameLine();
         ImGui.TextUnformatted($"当前列表: {GetMapName(config.LastSelectedMap)}");
     }
 
@@ -244,17 +279,12 @@ internal sealed class MainWindow : Window
 
     private void DrawBossTable(ExpeditionMap map)
     {
-        if (ImGui.SmallButton("清空所有"))
-        {
-            state.ClearMap(map);
-            statusText = $"已清空 {GetMapName(map)} 所有 Boss 时间记录。";
-        }
-
-        if (!ImGui.BeginTable("##boss_table", 5, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable))
+        if (!ImGui.BeginTable("##boss_table", 6, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable))
             return;
 
-        ImGui.TableSetupColumn("简称", ImGuiTableColumnFlags.WidthFixed, 90f);
+        ImGui.TableSetupColumn("简称", ImGuiTableColumnFlags.WidthFixed, 80f);
         ImGui.TableSetupColumn("名称");
+        ImGui.TableSetupColumn("掉落", ImGuiTableColumnFlags.WidthFixed, 50f);
         ImGui.TableSetupColumn("出现时间", ImGuiTableColumnFlags.WidthFixed, 70f);
         ImGui.TableSetupColumn("触发/位置");
         ImGui.TableSetupColumn("操作", ImGuiTableColumnFlags.WidthFixed, 120f);
@@ -268,10 +298,12 @@ internal sealed class MainWindow : Window
             ImGui.TableSetColumnIndex(1);
             ImGui.TextUnformatted(boss.Name);
             ImGui.TableSetColumnIndex(2);
-            ImGui.TextUnformatted(FormatTime(state.GetAppearedAt(boss)));
+            DrawDropMark(boss.Drop);
             ImGui.TableSetColumnIndex(3);
-            ImGui.TextUnformatted(boss.Trigger);
+            ImGui.TextUnformatted(FormatTime(state.GetAppearedAt(boss)));
             ImGui.TableSetColumnIndex(4);
+            ImGui.TextUnformatted(boss.Trigger);
+            ImGui.TableSetColumnIndex(5);
             if (ImGui.SmallButton($"记录##{boss.Map}_{boss.Id}"))
             {
                 state.RecordAppearance(boss, DateTime.Now);
@@ -352,9 +384,6 @@ internal sealed class MainWindow : Window
 
             ImGui.EndTable();
         }
-
-        if (!ImGui.CollapsingHeader("自动寻路"))
-            return;
 
         if (!resolvedMap.HasValue)
         {
@@ -591,12 +620,12 @@ internal sealed class MainWindow : Window
 
     private void DrawImportExport(ExpeditionMap map)
     {
-        ImGui.TextUnformatted("导入分享码或喊话");
-        ImGui.InputTextMultiline("##import", ref importText, 4096, new Vector2(-1f, 80f));
+        ImGui.TextUnformatted("导入 / 导出（共享文本框）");
+        ImGui.InputTextMultiline("##shared", ref sharedText, 4096, new Vector2(-1f, 80f));
 
         if (ImGui.Button("应用导入"))
         {
-            var result = XydShoutParser.ApplyToState(importText, map, state);
+            var result = XydShoutParser.ApplyToState(sharedText, map, state);
             if (result.AppliedCount > 0)
             {
                 config.LastSelectedMap = result.Map;
@@ -610,8 +639,8 @@ internal sealed class MainWindow : Window
         }
 
         ImGui.SameLine();
-        if (ImGui.Button("清空导入框"))
-            importText = string.Empty;
+        if (ImGui.Button("清空"))
+            sharedText = string.Empty;
 
         if (ImGui.Button("生成喊话"))
             SetGeneratedOutput(XydShoutGenerator.GenerateNormal(map, state), "喊话");
@@ -627,13 +656,11 @@ internal sealed class MainWindow : Window
         ImGui.SameLine();
         if (ImGui.Button("分享码出岛喊话"))
             SetGeneratedOutput(XydShoutGenerator.GenerateShareCodeOutIsland(map, state), "分享码出岛喊话");
-
-        ImGui.InputTextMultiline("##output", ref outputText, 4096, new Vector2(-1f, 80f), ImGuiInputTextFlags.ReadOnly);
     }
 
     private void SetGeneratedOutput(string text, string label)
     {
-        outputText = text;
+        sharedText = text;
         ImGui.SetClipboardText(text);
         statusText = $"已生成并复制{label}到剪贴板。";
     }
@@ -832,7 +859,7 @@ internal sealed class MainWindow : Window
     private static string FormatTerritoryIds(IEnumerable<uint> ids)
         => string.Join(",", NormalizeIds(ids));
 
-    private void DrawFateDebug()
+    private void DrawFateDebug(ExpeditionMap map)
     {
         if (!ImGui.CollapsingHeader("FATE/CE 调试区"))
             return;
@@ -960,12 +987,145 @@ internal sealed class MainWindow : Window
         DrawObservedFates(map);
         DrawCeAnnouncements(map);
         DrawCriticalEncounters(map);
-        DrawFateDebug();
+        DrawFateDebug(map);
         ImGui.Separator();
+    }
+
+    private void CopyAllDebugInfo(ExpeditionMap map)
+    {
+        var text = BuildDebugInfo(map);
+        ImGui.SetClipboardText(text);
+        statusText = "已复制全部调试信息到剪贴板。";
+        LogHelper.Chat("已复制全部调试信息到剪贴板。");
+    }
+
+    private string BuildDebugInfo(ExpeditionMap map)
+    {
+        var sb = new StringBuilder();
+        var territory = DalamudApi.ClientState.TerritoryType;
+        var currentMap = TerritoryGate.ResolveMap(territory, config);
+        var player = DalamudApi.ObjectTable.LocalPlayer;
+
+        sb.AppendLine("[基础信息]");
+        sb.AppendLine($"时间: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        sb.AppendLine($"当前 TerritoryType: {territory}");
+        sb.AppendLine($"识别地图: {(currentMap.HasValue ? GetMapName(currentMap.Value) : "未识别")}");
+        sb.AppendLine($"当前选中地图: {GetMapName(map)}");
+        sb.AppendLine(player != null ? $"当前位置: {FormatPosition(player.Position)}" : "当前位置: 未找到玩家对象");
+        sb.AppendLine($"岛 ID: {GetCurrentIslandId()}");
+        sb.AppendLine();
+
+        sb.AppendLine("[已观测 FATE]");
+        var fateObservations = state.GetFateObservations(map);
+        if (fateObservations.Count == 0)
+        {
+            sb.AppendLine("(无)");
+        }
+        else
+        {
+            foreach (var observation in fateObservations)
+                sb.AppendLine($"#{observation.FateId} {observation.Name} state={observation.State} appeared={observation.AppearedAtLocal:HH:mm:ss} dur={observation.Duration} remain={observation.TimeRemaining} lv={observation.Level}/{observation.MaxLevel} pos=({observation.PositionX:F1},{observation.PositionY:F1},{observation.PositionZ:F1}) icon={observation.MapIconId} terr={observation.TerritoryType}");
+        }
+        sb.AppendLine();
+
+        sb.AppendLine("[CE 公告记录]");
+        var ceAnnouncements = state.GetCeAnnouncements(map);
+        if (ceAnnouncements.Count == 0)
+        {
+            sb.AppendLine("(无)");
+        }
+        else
+        {
+            foreach (var announcement in ceAnnouncements)
+                sb.AppendLine($"{announcement.ObservedAtLocal:HH:mm:ss} terr={announcement.TerritoryType} {announcement.Message}");
+        }
+        sb.AppendLine();
+
+        sb.AppendLine("[CE 动态事件记录]");
+        var ceObservations = state.GetCriticalEncounterObservations(map);
+        if (ceObservations.Count == 0)
+        {
+            sb.AppendLine("(无)");
+        }
+        else
+        {
+            foreach (var observation in ceObservations)
+                sb.AppendLine($"id={observation.DynamicEventId} name={observation.Name} state={observation.State} appeared={observation.AppearedAtLocal:HH:mm:ss} start={observation.StartTimestamp} dur={observation.SecondsDuration} left={observation.SecondsLeft} progress={observation.Progress}% players={observation.Participants}/{observation.MaxParticipants} pos=({observation.PositionX:F1},{observation.PositionY:F1}) type={observation.EventType}/{observation.DynamicEventType} icon={observation.MapIconId}");
+        }
+        sb.AppendLine();
+
+        sb.AppendLine("[当前 FateTable]");
+        var currentFates = DalamudApi.FateTable
+            .Where(fate => fate != null && DalamudApi.FateTable.IsValid(fate))
+            .ToArray();
+        if (currentFates.Length == 0)
+        {
+            sb.AppendLine("(空)");
+        }
+        else
+        {
+            foreach (var fate in currentFates)
+                sb.AppendLine($"#{fate!.FateId} {fate.Name.TextValue} state={fate.State} start={FormatEpoch(fate.StartTimeEpoch)} dur={fate.Duration} remain={fate.TimeRemaining} lv={fate.Level}/{fate.MaxLevel} progress={fate.Progress}% pos=({fate.Position.X:F1},{fate.Position.Y:F1},{fate.Position.Z:F1}) icon={fate.MapIconId} terr={fate.TerritoryType.RowId}");
+        }
+        sb.AppendLine();
+
+        sb.AppendLine("[附近 EventObj 50y]");
+        if (player == null)
+        {
+            sb.AppendLine("(未找到玩家对象)");
+        }
+        else
+        {
+            var eventObjects = DalamudApi.ObjectTable
+                .Where(obj => obj != null && obj.ObjectKind == Dalamud.Game.ClientState.Objects.Enums.ObjectKind.EventObj)
+                .Select(obj => new { Obj = obj!, Dist = Vector3.Distance(player.Position, obj!.Position) })
+                .Where(item => item.Dist <= 50f)
+                .OrderBy(item => item.Dist)
+                .ToArray();
+            if (eventObjects.Length == 0)
+            {
+                sb.AppendLine("(无)");
+            }
+            else
+            {
+                foreach (var item in eventObjects)
+                    sb.AppendLine($"dist={item.Dist:F1} baseId={item.Obj.BaseId} name={item.Obj.Name} pos=({item.Obj.Position.X:F2},{item.Obj.Position.Y:F2},{item.Obj.Position.Z:F2})");
+            }
+        }
+
+        return sb.ToString();
     }
 
     private static string FormatTime(DateTime? time)
         => time.HasValue ? time.Value.ToString("HH:mm") : "--:--";
+
+    private static void DrawDropMark(string drop)
+    {
+        if (string.IsNullOrEmpty(drop))
+        {
+            ImGui.TextUnformatted("");
+            return;
+        }
+
+        var color = drop switch
+        {
+            "红" => new Vector4(1f, 0.3f, 0.3f, 1f),
+            "黄" => new Vector4(1f, 0.85f, 0.2f, 1f),
+            "紫" => new Vector4(0.75f, 0.35f, 1f, 1f),
+            "绿" => new Vector4(0.35f, 0.9f, 0.35f, 1f),
+            "蓝" => new Vector4(0.3f, 0.6f, 1f, 1f),
+            "碧" => new Vector4(0.2f, 0.85f, 0.8f, 1f),
+            "金" => new Vector4(0.95f, 0.8f, 0.3f, 1f),
+            "α" => new Vector4(0.6f, 0.8f, 1f, 1f),
+            "β" => new Vector4(1f, 0.75f, 0.35f, 1f),
+            "γ" => new Vector4(0.75f, 1f, 0.5f, 1f),
+            _ => new Vector4(1f, 1f, 1f, 1f),
+        };
+
+        ImGui.PushStyleColor(ImGuiCol.Text, color);
+        ImGui.TextUnformatted(drop);
+        ImGui.PopStyleColor();
+    }
 
     private static string GetMapName(ExpeditionMap map)
         => map == ExpeditionMap.South ? "南征" : "北征";

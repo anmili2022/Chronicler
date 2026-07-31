@@ -9,6 +9,7 @@ public sealed partial class ChroniclerPlugin : IDalamudPlugin
     private readonly CrescentStateService stateService;
     private readonly FateAppearanceDetector appearanceDetector;
     private readonly CriticalEncounterDetector criticalEncounterDetector;
+    private readonly CurrencyGainTracker currencyGainTracker;
     private readonly VnavService vnav;
     private readonly PluginUI ui;
     private bool isDisposing;
@@ -47,8 +48,9 @@ public sealed partial class ChroniclerPlugin : IDalamudPlugin
         stateService = new CrescentStateService(Configuration);
         appearanceDetector = new FateAppearanceDetector(stateService);
         criticalEncounterDetector = new CriticalEncounterDetector(stateService);
+        currencyGainTracker = new CurrencyGainTracker();
         vnav = new VnavService(pluginInterface, Configuration);
-        ui = new PluginUI(Configuration, stateService, vnav);
+        ui = new PluginUI(Configuration, stateService, vnav, currencyGainTracker);
 
         RegisterCommands();
         RegisterChatHandlers();

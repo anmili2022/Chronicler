@@ -13,8 +13,9 @@ internal sealed class FloatingStatusWindow : Window
     private readonly PluginConfiguration config;
     private readonly Action toggleSettings;
     private readonly VnavService vnav;
+    private readonly CurrencyGainTracker currencyGainTracker;
 
-    public FloatingStatusWindow(PluginConfiguration config, Action toggleSettings, VnavService vnav)
+    public FloatingStatusWindow(PluginConfiguration config, Action toggleSettings, VnavService vnav, CurrencyGainTracker currencyGainTracker)
         : base(
             "##ChroniclerFloatingStatus",
             ImGuiWindowFlags.NoTitleBar
@@ -27,6 +28,7 @@ internal sealed class FloatingStatusWindow : Window
         this.config = config;
         this.toggleSettings = toggleSettings;
         this.vnav = vnav;
+        this.currencyGainTracker = currencyGainTracker;
         BgAlpha = 0.8f;
         SizeCondition = ImGuiCond.FirstUseEver;
         Position = new Vector2(420f, 220f);
@@ -110,11 +112,41 @@ internal sealed class FloatingStatusWindow : Window
             }
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("记录、更新待命点");
+            ImGui.SameLine();
+            if (ImGui.SmallButton("效率"))
+                currencyGainTracker.PrintEfficiency();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("输出当前货币获取效率");
         }
     }
 
     private static string FormatMapName(ExpeditionMap map)
         => map == ExpeditionMap.South ? "南征" : "北征";
+
+    private static void DrawDropMark(string drop)
+    {
+        if (string.IsNullOrEmpty(drop))
+            return;
+
+        var color = drop switch
+        {
+            "红" => new Vector4(1f, 0.3f, 0.3f, 1f),
+            "黄" => new Vector4(1f, 0.85f, 0.2f, 1f),
+            "紫" => new Vector4(0.75f, 0.35f, 1f, 1f),
+            "绿" => new Vector4(0.35f, 0.9f, 0.35f, 1f),
+            "蓝" => new Vector4(0.3f, 0.6f, 1f, 1f),
+            "碧" => new Vector4(0.2f, 0.85f, 0.8f, 1f),
+            "金" => new Vector4(0.95f, 0.8f, 0.3f, 1f),
+            "α" => new Vector4(0.6f, 0.8f, 1f, 1f),
+            "β" => new Vector4(1f, 0.75f, 0.35f, 1f),
+            "γ" => new Vector4(0.75f, 1f, 0.5f, 1f),
+            _ => new Vector4(1f, 1f, 1f, 1f),
+        };
+
+        ImGui.PushStyleColor(ImGuiCol.Text, color);
+        ImGui.TextUnformatted($"[{drop}]");
+        ImGui.PopStyleColor();
+    }
 
     private ImGuiWindowFlags BuildFlags()
     {
@@ -206,6 +238,11 @@ internal sealed class FloatingStatusWindow : Window
             ImGui.PushStyleColor(ImGuiCol.Text, Yellow);
             ImGui.TextUnformatted(ev.Name.ToString());
             ImGui.PopStyleColor();
+            if (boss != null && !string.IsNullOrWhiteSpace(boss.Drop))
+            {
+                ImGui.SameLine();
+                DrawDropMark(boss.Drop);
+            }
             ImGui.SameLine();
             var registerRemaining = ev.State == DynamicEventState.Register && ev.StartTimestamp > 0
                 ? (int)Math.Max(0, ev.StartTimestamp - DateTimeOffset.UtcNow.ToUnixTimeSeconds())

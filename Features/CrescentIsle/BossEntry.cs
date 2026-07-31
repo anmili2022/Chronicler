@@ -9,6 +9,7 @@ internal sealed record BossEntry(
     string Name,
     string Trigger,
     ushort? FateId,
+    string Drop,
     string[] ObjectNameAliases);
 
 internal enum BossEventKind

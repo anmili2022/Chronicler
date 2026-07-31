@@ -27,6 +27,7 @@ internal sealed class VnavService : IDisposable
     private ICallGateSubscriber<object>? lsAbort;
     private ICallGateSubscriber<uint>? lsGetActiveAetheryte;
     private ICallGateSubscriber<uint>? lsGetActiveCustomAetheryte;
+    private ICallGateSubscriber<uint, byte, bool>? lsTeleport;
     private bool lifestreamAvailable;
     private string lifestreamStatus = "未安装";
 
@@ -91,6 +92,7 @@ internal sealed class VnavService : IDisposable
                 lsGetActiveCustomAetheryte = pluginInterface.GetIpcSubscriber<uint>("Lifestream.GetActiveCustomAetheryte");
                 aethernetTeleportById = pluginInterface.GetIpcSubscriber<uint, bool>("Lifestream.AethernetTeleportById");
                 aethernetTeleportByPlaceNameId = pluginInterface.GetIpcSubscriber<uint, bool>("Lifestream.AethernetTeleportByPlaceNameId");
+                lsTeleport = pluginInterface.GetIpcSubscriber<uint, byte, bool>("Lifestream.Teleport");
                 var dummy = lsIsBusy.InvokeFunc();
                 lifestreamAvailable = true;
                 SetLifestreamStatus($"已加载 {lifestreamPlugin.Version}", $"Lifestream IPC 可用，版本 {lifestreamPlugin.Version}");
@@ -142,6 +144,14 @@ internal sealed class VnavService : IDisposable
     private DateTime? pendingReturnNavigationBaseCampUtc;
     private bool pendingReturnNavigationSawBetweenAreas;
     private DateTime? pendingReturnNavigationConfirmedUtc;
+
+    private enum GoToCrescentStep { None, WaitingTuliyollal, WaitingOccultVillage, MovingToEntrance }
+    private GoToCrescentStep goToCrescentStep;
+    private DateTime goToCrescentStepStartedUtc;
+    private DateTime goToCrescentMoveStartedUtc;
+    private Vector3 goToCrescentLastPosition;
+    private int goToCrescentRetryCount;
+    private bool goToCrescentStartedInTuliyollal;
 
     public bool IsReady
     {
@@ -242,6 +252,344 @@ internal sealed class VnavService : IDisposable
         NavigateTo(PickRandomPointInRadius(center, radius), fly, preferredShardId, dismountOnArrival);
     }
 
+    /// <summary>从任意地图导航到新月岛入口。</summary>
+    public void GoToCrescentIsle()
+    {
+        NormalizeCrescentRouteConfig();
+
+        var territory = DalamudApi.ClientState.TerritoryType;
+        if (config.SouthTerritoryIds.Contains(territory) || config.NorthTerritoryIds.Contains(territory))
+        {
+            LogHelper.Chat("已在新月岛内。");
+            return;
+        }
+
+        if (territory == config.SolutionNineTerritoryType)
+        {
+            StartCrescentEntranceMove();
+            return;
+        }
+
+        TryInitializeLifestream();
+        if (lsTeleport == null)
+        {
+            LogHelper.Chat("无法自动前往新月岛。请先传送到图莱优菈，再使用 /shiguan enter 继续导航。");
+            return;
+        }
+
+        ClearGoToCrescentIsle();
+        LogHelper.Chat($"正在传送到图莱优菈(AetheryteId={config.TuliyollalAetheryteId})…");
+        try
+        {
+            ClearPendingNavigation();
+            ClearPendingTeleport();
+            ClearPendingMove();
+            ClearPendingDismount();
+            try { stop.InvokeAction(); } catch { }
+
+            if (!lsTeleport.InvokeFunc(config.TuliyollalAetheryteId, 0))
+            {
+                LogHelper.Chat("Lifestream 传送失败，请手动传到图莱优菈。");
+                return;
+            }
+
+            goToCrescentStep = GoToCrescentStep.WaitingTuliyollal;
+            goToCrescentStepStartedUtc = DateTime.UtcNow;
+            goToCrescentStartedInTuliyollal = territory == config.TuliyollalTerritoryType;
+        }
+        catch (Exception ex)
+        {
+            LogHelper.Chat($"Lifestream 传送失败: {ex.Message}");
+        }
+    }
+
+    private void NormalizeCrescentRouteConfig()
+    {
+        var changed = false;
+        if (config.TuliyollalTerritoryType != 1185)
+        {
+            config.TuliyollalTerritoryType = 1185;
+            changed = true;
+        }
+
+        if (config.TuliyollalAetheryteId == 13)
+        {
+            config.TuliyollalAetheryteId = 216;
+            changed = true;
+        }
+
+        if (config.SolutionNineTerritoryType == 1187)
+        {
+            config.SolutionNineTerritoryType = 1278;
+            changed = true;
+        }
+
+        if (Math.Abs(config.CrescentIsleEntranceX - -77.03f) < 0.01f
+            && Math.Abs(config.CrescentIsleEntranceZ - -14.84f) < 0.01f)
+        {
+            config.CrescentIsleEntranceX = -76.86f;
+            config.CrescentIsleEntranceY = 5f;
+            config.CrescentIsleEntranceZ = -14.54f;
+            changed = true;
+        }
+
+        if (changed)
+        {
+            config.Save();
+            LogHelper.Chat("已修正旧版新月岛入口传送配置。");
+        }
+    }
+
+    private void StartCrescentEntranceMove()
+    {
+        var entrance = new Vector3(config.CrescentIsleEntranceX, config.CrescentIsleEntranceY, config.CrescentIsleEntranceZ);
+        if (!TryGetCrescentEntranceNavmeshPoint(entrance, out var destination))
+        {
+            LogHelper.Chat("前往新月岛入口失败：vnavmesh 在入口附近找不到可走网格点。");
+            ClearGoToCrescentIsle();
+            return;
+        }
+
+        LogHelper.Chat("正在步行导航到新月岛入口。");
+        goToCrescentStep = GoToCrescentStep.MovingToEntrance;
+        goToCrescentStepStartedUtc = DateTime.UtcNow;
+        goToCrescentRetryCount = 0;
+        StartCrescentEntrancePathfind(destination);
+    }
+
+    private bool TryGetCrescentEntranceNavmeshPoint(Vector3 entrance, out Vector3 destination)
+    {
+        destination = default;
+        try
+        {
+            if (!isReady.InvokeFunc())
+                return false;
+
+            var snapped = nearestPoint.InvokeFunc(entrance, 120f, 300f)
+                          ?? nearestPoint.InvokeFunc(entrance, 180f, 600f)
+                          ?? nearestPoint.InvokeFunc(entrance, 260f, 1000f);
+            if (!snapped.HasValue)
+                return false;
+
+            destination = snapped.Value;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void StartCrescentEntrancePathfind(Vector3 destination)
+    {
+        goToCrescentMoveStartedUtc = DateTime.UtcNow;
+        goToCrescentLastPosition = DalamudApi.ObjectTable.LocalPlayer?.Position ?? default;
+        StartPathfind(destination, false);
+    }
+
+    private void StartOccultVillageAethernet()
+    {
+        ClearGoToCrescentIsle();
+        TryInitializeLifestream();
+        try
+        {
+            if (aethernetTeleportById == null || !aethernetTeleportById.InvokeFunc(config.OccultVillageAethernetId))
+            {
+                LogHelper.Chat("幻境村传送失败。");
+                return;
+            }
+
+            goToCrescentStep = GoToCrescentStep.WaitingOccultVillage;
+            goToCrescentStepStartedUtc = DateTime.UtcNow;
+        }
+        catch (Exception ex)
+        {
+            LogHelper.Chat($"幻境村传送失败: {ex.Message}");
+        }
+    }
+
+    private void ProcessGoToCrescentIsle()
+    {
+        if (goToCrescentStep == GoToCrescentStep.None)
+            return;
+
+        var now = DateTime.UtcNow;
+        if (now - goToCrescentStepStartedUtc > TimeSpan.FromSeconds(90))
+        {
+            LogHelper.Chat("前往新月岛超时，已取消。");
+            ClearGoToCrescentIsle();
+            return;
+        }
+
+        if (DalamudApi.Condition[ConditionFlag.BetweenAreas] || DalamudApi.Condition[ConditionFlag.BetweenAreas51])
+            return;
+
+        var territory = DalamudApi.ClientState.TerritoryType;
+
+        switch (goToCrescentStep)
+        {
+            case GoToCrescentStep.WaitingTuliyollal:
+            {
+                if (territory != config.TuliyollalTerritoryType)
+                    return;
+
+                if (DalamudApi.ObjectTable.LocalPlayer == null)
+                    return;
+
+                bool busy;
+                try { busy = lsIsBusy?.InvokeFunc() == true; }
+                catch { busy = false; }
+
+                if (busy)
+                    return;
+
+                if (DalamudApi.Condition[ConditionFlag.BetweenAreas] || DalamudApi.Condition[ConditionFlag.BetweenAreas51])
+                    return;
+
+                if (now - goToCrescentStepStartedUtc < TimeSpan.FromSeconds(2))
+                    return;
+
+                if (goToCrescentStartedInTuliyollal && now - goToCrescentStepStartedUtc < TimeSpan.FromSeconds(8))
+                    return;
+
+                uint activeAetheryteId;
+                try
+                {
+                    activeAetheryteId = lsGetActiveAetheryte?.InvokeFunc() ?? 0;
+                }
+                catch
+                {
+                    activeAetheryteId = 0;
+                }
+
+                if (activeAetheryteId != 216)
+                    return;
+
+                if (aethernetTeleportById == null)
+                {
+                    LogHelper.Chat("Lifestream 都市传送不可用，请手动传送到幻境村。");
+                    ClearGoToCrescentIsle();
+                    return;
+                }
+
+                LogHelper.Chat("正在传送到幻境村…");
+                try
+                {
+                    if (!aethernetTeleportById.InvokeFunc(config.OccultVillageAethernetId))
+                    {
+                        LogHelper.Chat("幻境村传送失败。");
+                        ClearGoToCrescentIsle();
+                        return;
+                    }
+
+                    goToCrescentStep = GoToCrescentStep.WaitingOccultVillage;
+                    goToCrescentStepStartedUtc = now;
+                }
+                catch (Exception ex)
+                {
+                    LogHelper.Chat($"幻境村传送失败: {ex.Message}");
+                    ClearGoToCrescentIsle();
+                }
+
+                break;
+            }
+
+            case GoToCrescentStep.WaitingOccultVillage:
+            {
+                if (territory != config.SolutionNineTerritoryType)
+                    return;
+
+                bool busy;
+                try { busy = lsIsBusy?.InvokeFunc() == true; }
+                catch { busy = false; }
+
+                if (busy)
+                    return;
+
+                if (now - goToCrescentStepStartedUtc < TimeSpan.FromSeconds(2))
+                    return;
+
+                StartCrescentEntranceMove();
+                break;
+            }
+
+            case GoToCrescentStep.MovingToEntrance:
+                ProcessCrescentEntranceMove();
+                break;
+        }
+    }
+
+    private void ProcessCrescentEntranceMove()
+    {
+        var entrance = new Vector3(config.CrescentIsleEntranceX, config.CrescentIsleEntranceY, config.CrescentIsleEntranceZ);
+        var player = DalamudApi.ObjectTable.LocalPlayer;
+        if (player == null)
+            return;
+
+        if (Vector3.Distance(player.Position, entrance) <= 4f)
+        {
+            ClearGoToCrescentIsle();
+            try { stop.InvokeAction(); } catch { }
+            LogHelper.Chat("已到达新月岛入口。");
+            return;
+        }
+
+        if (DalamudApi.ClientState.TerritoryType != config.SolutionNineTerritoryType)
+        {
+            ClearGoToCrescentIsle();
+            try { stop.InvokeAction(); } catch { }
+            LogHelper.Chat("已离开幻境村，取消前往新月岛入口。");
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        if (now - goToCrescentStepStartedUtc > TimeSpan.FromSeconds(60))
+        {
+            ClearGoToCrescentIsle();
+            try { stop.InvokeAction(); } catch { }
+            LogHelper.Chat("前往新月岛入口超时，已取消导航。");
+            return;
+        }
+
+        if (now - goToCrescentMoveStartedUtc < TimeSpan.FromSeconds(7))
+            return;
+
+        if (Vector3.Distance(player.Position, goToCrescentLastPosition) >= 2.5f)
+        {
+            goToCrescentMoveStartedUtc = now;
+            goToCrescentLastPosition = player.Position;
+            return;
+        }
+
+        if (goToCrescentRetryCount >= 3)
+        {
+            ClearGoToCrescentIsle();
+            try { stop.InvokeAction(); } catch { }
+            LogHelper.Chat("前往新月岛入口失败：多次重试后仍未移动。");
+            return;
+        }
+
+        if (!TryGetCrescentEntranceNavmeshPoint(entrance, out var destination))
+        {
+            goToCrescentMoveStartedUtc = now;
+            goToCrescentLastPosition = player.Position;
+            return;
+        }
+
+        goToCrescentRetryCount++;
+        LogHelper.Chat($"新月岛入口导航未移动，重试 {goToCrescentRetryCount}/3。");
+        StartCrescentEntrancePathfind(destination);
+    }
+
+    private void ClearGoToCrescentIsle()
+    {
+        goToCrescentStep = GoToCrescentStep.None;
+        goToCrescentMoveStartedUtc = DateTime.MinValue;
+        goToCrescentLastPosition = default;
+        goToCrescentRetryCount = 0;
+        goToCrescentStartedInTuliyollal = false;
+    }
+
     private Vector3 PickRandomPointInRadius(Vector3 center, float radius)
     {
         var capped = radius > 0f ? radius : 15f;
@@ -299,6 +647,7 @@ internal sealed class VnavService : IDisposable
         ProcessPendingTeleport();
         ProcessPendingReturnNavigation();
         ProcessPendingDismount();
+        ProcessGoToCrescentIsle();
 
         if (!pendingTarget.HasValue)
             return;
@@ -623,6 +972,7 @@ internal sealed class VnavService : IDisposable
         ClearPendingMove();
         ClearPendingReturnNavigation();
         ClearPendingDismount();
+        ClearGoToCrescentIsle();
         try { stop.InvokeAction(); }
         catch { }
     }

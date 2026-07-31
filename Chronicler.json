@@ -1,8 +1,8 @@
 {
   "Author": "Anmi",
   "Name": "新月岛史官",
-  "Punchline": "本地记录新月岛 CE/FATE 出现时间，并兼容 xyd 分享码和喊话。",
-  "Description": "进入新月岛后自动记录南征/北征 CE/FATE 出现时间，支持导入/导出 xyd.zzmelon.com 分享码，生成喊话，并监听游戏内喊话自动同步状态。导航传送功能需要 Lifestream 2.5.4.15 以上。",
+  "Punchline": "本地记录新月岛 CE/FATE 出现时间，支持 xyd 分享码、喊话和一键上岛。",
+  "Description": "进入新月岛后自动记录南征/北征 CE/FATE 出现时间，支持导入/导出 xyd.zzmelon.com 分享码，生成喊话，并监听游戏内喊话自动同步状态。可用宏命令 /shiguan enter 或 /史官 上岛 前往新月岛入口。导航传送功能需要 Lifestream 2.5.4.15 以上和 vnavmesh。",
   "IconUrl": "https://raw.githubusercontent.com/anmili2022/Chronicler/main/images/icon.png",
   "Tags": [
     "crescent",
@@ -16,6 +16,6 @@
   ],
   "InternalName": "Chronicler",
   "ApplicableVersion": "any",
-  "AssemblyVersion": "0.2.0.10",
+  "AssemblyVersion": "0.2.0.11",
   "DalamudApiLevel": 15
 }

@@ -16,11 +16,6 @@ public sealed partial class ChroniclerPlugin
         try
         {
             var currentMap = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, Configuration);
-            if (currentMap.HasValue && Configuration.LastSelectedMap != currentMap.Value)
-            {
-                Configuration.LastSelectedMap = currentMap.Value;
-                Configuration.Save();
-            }
 
             ProcessStandbyNavigation();
 
