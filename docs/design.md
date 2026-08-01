@@ -132,7 +132,7 @@
 
 ### 状态
 
-已实现（v0.2.0.12+）：`BossRouteDto/BossRoutePointDto`、`config.BossRoutes`、`RouteCatalog`（内置预设 + 合并解析）、`/shiguan route export`、`VnavService.NavigateViaRoute` 状态机、自动导航集成、自动寻路页签"路线"配置区。待实机验证到达判定与卡住重试。
+已实现（v0.2.0.13+）：`BossRouteDto/BossRoutePointDto`、`config.BossRoutes`、`RouteCatalog`（内置预设 + 合并解析）、`/shiguan route export`、`VnavService.NavigateViaRoute` 状态机、自动导航集成、自动寻路页签"路线"配置区。待实机验证到达判定与卡住重试。
 
 ### 目标
 
