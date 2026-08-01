@@ -10,13 +10,20 @@ public sealed class PluginConfiguration : IPluginConfiguration
     [NonSerialized]
     private IDalamudPluginInterface? pluginInterface;
 
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 3;
     public bool Enabled = true;
     public bool ListenChat = true;
     public bool AutoDetectAppearances = true;
     public bool AutoNavigationEnabled = false;
+    public bool AutoIslandRotationEnabled = false;
+    public int AutoIslandLeavePlayerThreshold = 30;
+    public int AutoIslandLeaveTimeThresholdMinutes = 160;
+    public int AutoIslandLeaveTimeThresholdSeconds = 160;
+    public int AutoIslandReenterDelaySeconds = 20;
+    public ExpeditionMap AutoIslandTargetMap = ExpeditionMap.North;
     public int AutoNavigationStartDelaySeconds = 5;
     public int AutoReturnDelaySeconds = 5;
+    public int AutoNavigationTeleportThreshold = 100;
     public int AutoSkipProgressPercent = 80;
     public bool AutoPrioritizeCe = true;
     public float AutoReturnStandbyX = 0;
@@ -50,10 +57,27 @@ public sealed class PluginConfiguration : IPluginConfiguration
     public List<FateObservationDto> FateObservations = new();
     public List<CeAnnouncementDto> CeAnnouncements = new();
     public List<CriticalEncounterObservationDto> CriticalEncounterObservations = new();
+    public List<BossRouteDto> BossRoutes = new();
 
     public void Initialize(IDalamudPluginInterface pluginInterface)
     {
         this.pluginInterface = pluginInterface;
+        if (Version < 2)
+        {
+            AutoIslandLeavePlayerThreshold = 30;
+            AutoIslandLeaveTimeThresholdMinutes = 160;
+            AutoIslandReenterDelaySeconds = 20;
+            AutoIslandTargetMap = ExpeditionMap.North;
+            Version = 2;
+            Save();
+        }
+
+        if (Version < 3)
+        {
+            AutoIslandLeaveTimeThresholdMinutes = 160;
+            Version = 3;
+            Save();
+        }
     }
 
     public void Save()

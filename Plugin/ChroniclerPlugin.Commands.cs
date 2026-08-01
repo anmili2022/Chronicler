@@ -1,3 +1,4 @@
+using Dalamud.Bindings.ImGui;
 using Dalamud.Game.Command;
 
 namespace Chronicler;
@@ -126,6 +127,40 @@ public sealed partial class ChroniclerPlugin
             return;
         }
 
+        if (trimmed.StartsWith("route ", StringComparison.OrdinalIgnoreCase) || trimmed.StartsWith("路线 ", StringComparison.OrdinalIgnoreCase))
+        {
+            HandleRouteCommand(trimmed[(trimmed.IndexOf(' ') + 1)..].Trim());
+            return;
+        }
+
         ui.OpenMainWindow();
+    }
+
+    private void HandleRouteCommand(string args)
+    {
+        if (args.Equals("export", StringComparison.OrdinalIgnoreCase) || args.Equals("导出", StringComparison.OrdinalIgnoreCase))
+        {
+            var code = RouteCodeExporter.Export(Configuration.BossRoutes);
+            if (string.IsNullOrWhiteSpace(code))
+            {
+                LogHelper.Chat("当前没有已录制的路线。");
+                return;
+            }
+
+            ImGui.SetClipboardText(code);
+            LogHelper.Chat("已生成路线代码并复制到剪贴板，粘贴到 RouteCatalog.BuildRoutes 即可内置。");
+            return;
+        }
+
+        if (args.Equals("clear", StringComparison.OrdinalIgnoreCase) || args.Equals("清空", StringComparison.OrdinalIgnoreCase))
+        {
+            var count = Configuration.BossRoutes.Count;
+            Configuration.BossRoutes.Clear();
+            Configuration.Save();
+            LogHelper.Chat($"已清空 {count} 条自定义路线。");
+            return;
+        }
+
+        LogHelper.Chat("用法：/shiguan route export 导出内置代码；/shiguan route clear 清空自定义路线。");
     }
 }

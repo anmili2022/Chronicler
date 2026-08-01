@@ -5,6 +5,8 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Game.ClientState.Fates;
 using Dalamud.Interface.Windowing;
 using FFXIVClientStructs.FFXIV.Client.Game.InstanceContent;
+using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using TerritoryTypeSheet = Lumina.Excel.Sheets.TerritoryType;
 
 namespace Chronicler;
 
@@ -13,19 +15,25 @@ internal sealed class MainWindow : Window
     private readonly PluginConfiguration config;
     private readonly CrescentStateService state;
     private readonly VnavService vnav;
+    private readonly InstancePopulationProvider populationProvider;
     private string sharedText = string.Empty;
     private string statusText = string.Empty;
     private string southTerritoriesText;
     private string northTerritoriesText;
     private readonly List<string> distanceDebugLines = new();
     private const int MaxDebugRows = 50;
+    private int routeSelectedCeBossIndex = -1;
+    private int routeSelectedFateBossIndex = -1;
+    private int routeSelectedCeRouteIndex;
+    private int routeSelectedFateRouteIndex;
 
-    public MainWindow(PluginConfiguration config, CrescentStateService state, VnavService vnav)
+    public MainWindow(PluginConfiguration config, CrescentStateService state, VnavService vnav, InstancePopulationProvider populationProvider)
         : base($"新月岛史官 v{GetVersionText()}")
     {
         this.config = config;
         this.state = state;
         this.vnav = vnav;
+        this.populationProvider = populationProvider;
         NormalizeTerritoryIds();
         southTerritoriesText = FormatTerritoryIds(config.SouthTerritoryIds);
         northTerritoriesText = FormatTerritoryIds(config.NorthTerritoryIds);
@@ -152,6 +160,8 @@ internal sealed class MainWindow : Window
 
     private void DrawDebugSettings()
     {
+        DrawIslandRuntimeInfo();
+
         var showDebugSections = config.ShowDebugSections;
         if (ImGui.Checkbox("显示调试区", ref showDebugSections))
         {
@@ -176,6 +186,24 @@ internal sealed class MainWindow : Window
 
         foreach (var line in distanceDebugLines)
             ImGui.TextDisabled(line);
+    }
+
+    private unsafe void DrawIslandRuntimeInfo()
+    {
+        var currentMap = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, config);
+
+        var content = currentMap.HasValue ? PublicContentOccultCrescent.GetInstance() : null;
+        var timeLeft = content == null ? 0f : content->ContentTimeLeft;
+        var timeText = FormatMinutesSeconds(timeLeft);
+
+        var population = currentMap.HasValue ? populationProvider.CurrentPopulation : null;
+        var populationText = population.HasValue
+            ? $"{population.Value}"
+            : (currentMap.HasValue ? "读取中..." : "--");
+
+        ImGui.TextUnformatted($"当前区域人数: {populationText}");
+        ImGui.SameLine();
+        ImGui.TextUnformatted($"当前任务剩余时间: {timeText}");
     }
 
     private unsafe void UpdateDistanceDebugLines()
@@ -221,6 +249,15 @@ internal sealed class MainWindow : Window
 
     private static string FormatPosition(Vector3 pos)
         => $"({pos.X:F1}, {pos.Y:F1}, {pos.Z:F1})";
+
+    private static string FormatMinutesSeconds(float seconds)
+    {
+        if (seconds <= 0f)
+            return "--:--";
+
+        var totalSeconds = Math.Max(0, (int)MathF.Ceiling(seconds));
+        return $"{totalSeconds / 60}:{totalSeconds % 60:D2}";
+    }
 
     private void OpenUrl(string url)
     {
@@ -383,12 +420,24 @@ internal sealed class MainWindow : Window
             ImGui.TextDisabled("战斗进度 >= X% 时不再前往新目标");
 
             ImGui.EndTable();
+
+            ImGui.TextUnformatted("传送阈值（码）");
+            ImGui.SetNextItemWidth(110f);
+            var teleportThreshold = Math.Max(0, config.AutoNavigationTeleportThreshold);
+            if (ImGui.InputInt("##auto_nav_teleport_threshold", ref teleportThreshold))
+            {
+                config.AutoNavigationTeleportThreshold = Math.Clamp(teleportThreshold, 0, 9999);
+                config.Save();
+            }
+            ImGui.TextDisabled("玩家距目标 + 阈值 > 目标最近水晶距目标 时先回营地再传送");
         }
+
+        DrawAutoIslandRotationSettings();
 
         if (!resolvedMap.HasValue)
         {
-            ImGui.TextDisabled("当前未识别为新月岛地图。");
-            return;
+            ImGui.TextDisabled($"当前不在新月岛地图，按「{GetMapName(config.LastSelectedMap)}」显示目标与路线。可在新月岛史官页签切换南/北岛。");
+            resolvedMap = config.LastSelectedMap;
         }
 
         var content = PublicContentOccultCrescent.GetInstance();
@@ -433,6 +482,427 @@ internal sealed class MainWindow : Window
 
         if (ImGui.CollapsingHeader("FATE##auto_fate_targets", ImGuiTreeNodeFlags.DefaultOpen))
             DrawAutoFateTargetTable(fateBosses);
+
+        if (ImGui.CollapsingHeader("路线##route_config"))
+            DrawRouteConfig(resolvedMap.Value);
+    }
+
+    private void DrawAutoIslandRotationSettings()
+    {
+        ImGui.Spacing();
+        ImGui.TextDisabled("自动进出岛");
+        var enabled = config.AutoIslandRotationEnabled;
+        if (ImGui.Checkbox("启用自动进出岛", ref enabled))
+        {
+            config.AutoIslandRotationEnabled = enabled;
+            config.Save();
+        }
+
+        ImGui.SameLine();
+        ImGui.TextDisabled("阈值为 0 时禁用对应条件");
+
+        if (ImGui.BeginTable("##auto_island_rotation_settings", 4, ImGuiTableFlags.SizingStretchProp))
+        {
+            ImGui.TableSetupColumn("人数条件");
+            ImGui.TableSetupColumn("任务时间条件");
+            ImGui.TableSetupColumn("重新进岛延迟");
+            ImGui.TableSetupColumn("目标地图");
+            ImGui.TableHeadersRow();
+            ImGui.TableNextRow();
+
+            ImGui.TableSetColumnIndex(0);
+            var playerThreshold = Math.Max(0, config.AutoIslandLeavePlayerThreshold);
+            ImGui.SetNextItemWidth(110f);
+            if (ImGui.InputInt("人以下##auto_island_player_threshold", ref playerThreshold))
+            {
+                config.AutoIslandLeavePlayerThreshold = Math.Clamp(playerThreshold, 0, 999);
+                config.Save();
+            }
+
+            ImGui.TableSetColumnIndex(1);
+            var timeThreshold = Math.Max(0, config.AutoIslandLeaveTimeThresholdMinutes);
+            ImGui.SetNextItemWidth(110f);
+            if (ImGui.InputInt("分钟以下##auto_island_time_threshold", ref timeThreshold))
+            {
+                config.AutoIslandLeaveTimeThresholdMinutes = Math.Clamp(timeThreshold, 0, 1440);
+                config.Save();
+            }
+
+            ImGui.TableSetColumnIndex(2);
+            var reenterDelay = Math.Max(0, config.AutoIslandReenterDelaySeconds);
+            ImGui.SetNextItemWidth(110f);
+            if (ImGui.InputInt("秒##auto_island_reenter_delay", ref reenterDelay))
+            {
+                config.AutoIslandReenterDelaySeconds = Math.Clamp(reenterDelay, 0, 3600);
+                config.Save();
+            }
+
+            ImGui.TableSetColumnIndex(3);
+            var targetMap = config.AutoIslandTargetMap;
+            if (ImGui.BeginCombo("##auto_island_target_map", GetMapName(targetMap)))
+            {
+                if (ImGui.Selectable("南岛", targetMap == ExpeditionMap.South))
+                    targetMap = ExpeditionMap.South;
+                if (ImGui.Selectable("北岛", targetMap == ExpeditionMap.North))
+                    targetMap = ExpeditionMap.North;
+                ImGui.EndCombo();
+            }
+
+            if (targetMap != config.AutoIslandTargetMap)
+            {
+                config.AutoIslandTargetMap = targetMap;
+                config.Save();
+            }
+
+            ImGui.EndTable();
+        }
+    }
+
+    private void DrawRouteConfig(ExpeditionMap map)
+    {
+        ImGui.TextUnformatted("为每个 CE/FATE 录制 2~3 条路线（≥2 个航点），导航时随机选一条。内置路线随版本分发，新用户无需设置。");
+        ImGui.Spacing();
+
+        if (ImGui.CollapsingHeader("CE 路线##route_ce_config", ImGuiTreeNodeFlags.DefaultOpen))
+            DrawRouteBossGroup(map, BossCatalog.GetCriticalEncounters(map).ToArray(), ref routeSelectedCeBossIndex, ref routeSelectedCeRouteIndex, "ce");
+
+        if (ImGui.CollapsingHeader("FATE 路线##route_fate_config", ImGuiTreeNodeFlags.DefaultOpen))
+            DrawRouteBossGroup(map, BossCatalog.GetFates(map).ToArray(), ref routeSelectedFateBossIndex, ref routeSelectedFateRouteIndex, "fate");
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.TextUnformatted("录制后可用 /shiguan route export 生成内置代码，粘贴到 RouteCatalog.BuildRoutes 随版本分发。");
+    }
+
+    private void DrawRouteBossGroup(ExpeditionMap map, IReadOnlyList<BossEntry> bosses, ref int selectedBossIndex, ref int selectedRouteIndex, string idPrefix)
+    {
+        if (bosses.Count == 0)
+            return;
+
+        if (selectedBossIndex < 0)
+            selectedBossIndex = 0;
+
+        if (selectedBossIndex >= bosses.Count)
+            selectedBossIndex = bosses.Count - 1;
+
+        var boss = bosses[selectedBossIndex];
+        if (ImGui.BeginCombo($"##route_boss_combo_{idPrefix}_{map}", $"{boss.Abbreviation} - {boss.Name}", ImGuiComboFlags.HeightLargest))
+        {
+            for (var i = 0; i < bosses.Count; i++)
+            {
+                if (ImGui.Selectable($"{bosses[i].Abbreviation} - {bosses[i].Name}", i == selectedBossIndex))
+                    selectedBossIndex = i;
+            }
+
+            ImGui.EndCombo();
+        }
+
+        ImGui.SameLine();
+        if (ImGui.SmallButton($"导航##route_nav_boss_{idPrefix}_{map}_{boss.Id}"))
+            NavigateToBossPosition(boss);
+
+        ImGui.SameLine();
+        if (ImGui.SmallButton($"标记##route_flag_{idPrefix}_{map}_{boss.Id}"))
+            MarkBossOnMap(boss);
+
+        DrawRoutesForBoss(map, boss, ref selectedRouteIndex, idPrefix);
+    }
+
+    private void DrawRoutesForBoss(ExpeditionMap map, BossEntry boss, ref int selectedRouteIndex, string idPrefix)
+    {
+        selectedRouteIndex = Math.Clamp(selectedRouteIndex, 0, 2);
+        var bossRoutes = RouteCatalog.GetRoutes(map, boss.Id, config);
+        var userRoutes = config.BossRoutes.Where(route => route.Map == map && route.BossId == boss.Id).ToList();
+        for (var routeIndex = 0; routeIndex < 3; routeIndex++)
+        {
+            var builtIn = bossRoutes.FirstOrDefault(route => route.RouteIndex == routeIndex && !userRoutes.Contains(route));
+            var userRoute = userRoutes.FirstOrDefault(route => route.RouteIndex == routeIndex);
+            var effectiveRoute = userRoute ?? builtIn;
+            var pointCount = effectiveRoute?.Points.Count ?? 0;
+            var originLabel = userRoute != null ? "自定义" : builtIn != null ? "内置" : "未录制";
+            var selected = selectedRouteIndex == routeIndex;
+            if (selected)
+                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.2f, 0.45f, 0.75f, 1f));
+            if (ImGui.SmallButton($"路线 {routeIndex + 1} ({pointCount})##route_pick_{idPrefix}_{map}_{boss.Id}_{routeIndex}"))
+                selectedRouteIndex = routeIndex;
+            if (selected)
+                ImGui.PopStyleColor();
+            if (routeIndex < 2)
+                ImGui.SameLine();
+        }
+
+        DrawRouteEditor(map, boss, selectedRouteIndex, idPrefix);
+    }
+
+    private void DrawRouteEditor(ExpeditionMap map, BossEntry boss, int routeIndex, string idPrefix)
+    {
+        var bossRoutes = RouteCatalog.GetRoutes(map, boss.Id, config);
+        var userRoute = config.BossRoutes.FirstOrDefault(route => route.Map == map && route.BossId == boss.Id && route.RouteIndex == routeIndex);
+        var builtIn = bossRoutes.FirstOrDefault(route => route.RouteIndex == routeIndex && !ReferenceEquals(route, userRoute));
+        var effectiveRoute = userRoute ?? builtIn;
+        var originLabel = userRoute != null ? "自定义" : builtIn != null ? "内置" : "未录制";
+
+        ImGui.TextUnformatted($"当前 Boss: {boss.Abbreviation}  路线 {routeIndex + 1}  来源: {originLabel}");
+        if (ImGui.BeginTable($"##route_points_{idPrefix}_{map}_{boss.Id}_{routeIndex}", 4, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg))
+        {
+            ImGui.TableSetupColumn("#", ImGuiTableColumnFlags.WidthFixed, 30f);
+            ImGui.TableSetupColumn("类型", ImGuiTableColumnFlags.WidthFixed, 55f);
+            ImGui.TableSetupColumn("坐标 (X, Y, Z)");
+            ImGui.TableSetupColumn("操作", ImGuiTableColumnFlags.WidthFixed, 135f);
+            ImGui.TableHeadersRow();
+
+            if (effectiveRoute != null)
+            {
+                for (var i = 0; i < effectiveRoute.Points.Count; i++)
+                {
+                    var point = effectiveRoute.Points[i];
+                    ImGui.TableNextRow();
+                    ImGui.TableSetColumnIndex(0);
+                    ImGui.TextUnformatted((i + 1).ToString());
+                    ImGui.TableSetColumnIndex(1);
+                    ImGui.TextUnformatted(point.Kind == BossRoutePointKind.Forced ? "强制" : "普通");
+                    ImGui.TableSetColumnIndex(2);
+                    ImGui.TextUnformatted($"({point.X:F1}, {point.Y:F1}, {point.Z:F1})");
+                    ImGui.TableSetColumnIndex(3);
+                    if (ImGui.SmallButton($"导##nav_point_{idPrefix}_{map}_{boss.Id}_{routeIndex}_{i}"))
+                        NavigateToRoutePoint(boss, point);
+
+                    ImGui.SameLine();
+                    if (ImGui.SmallButton($"强##force_point_{idPrefix}_{map}_{boss.Id}_{routeIndex}_{i}"))
+                        ToggleRoutePointKind(map, boss, routeIndex, i, effectiveRoute);
+
+                    ImGui.SameLine();
+                    if (ImGui.SmallButton($"更##update_point_{idPrefix}_{map}_{boss.Id}_{routeIndex}_{i}"))
+                        UpdateRoutePointPosition(map, boss, routeIndex, i, effectiveRoute);
+
+                    if (userRoute != null)
+                    {
+                        ImGui.SameLine();
+                        if (ImGui.SmallButton($"删##del_{idPrefix}_{map}_{boss.Id}_{routeIndex}_{i}"))
+                        {
+                            userRoute.Points.RemoveAt(i);
+                            config.Save();
+                        }
+                    }
+                }
+            }
+            else
+            {
+                ImGui.TableNextRow();
+                ImGui.TableSetColumnIndex(2);
+                ImGui.TextUnformatted("未录制路线，点击下方按钮录制。");
+            }
+
+            ImGui.EndTable();
+        }
+
+        if (ImGui.Button($"添加当前位置##add_{idPrefix}_{map}_{boss.Id}_{routeIndex}"))
+        {
+            var pos = DalamudApi.ObjectTable.LocalPlayer?.Position;
+            if (pos.HasValue)
+            {
+                AddRoutePoint(map, boss, routeIndex, pos.Value, BossRoutePointKind.Normal);
+            }
+        }
+
+        ImGui.SameLine();
+        if (ImGui.Button($"测试路线##test_{idPrefix}_{map}_{boss.Id}_{routeIndex}"))
+            TestRoute(boss, effectiveRoute);
+
+        if (userRoute == null)
+            return;
+
+        ImGui.SameLine();
+        if (ImGui.Button($"删除最后航点##delfirst_{idPrefix}_{map}_{boss.Id}_{routeIndex}"))
+        {
+            if (userRoute.Points.Count > 0)
+            {
+                userRoute.Points.RemoveAt(userRoute.Points.Count - 1);
+                config.Save();
+            }
+        }
+
+        ImGui.SameLine();
+        if (ImGui.Button($"清空路线##clear_{idPrefix}_{map}_{boss.Id}_{routeIndex}"))
+        {
+            config.BossRoutes.Remove(userRoute);
+            config.Save();
+        }
+    }
+
+    private void AddRoutePoint(ExpeditionMap map, BossEntry boss, int routeIndex, Vector3 pos, BossRoutePointKind kind)
+    {
+        var route = config.BossRoutes.FirstOrDefault(item => item.Map == map && item.BossId == boss.Id && item.RouteIndex == routeIndex);
+        if (route == null)
+        {
+            route = new BossRouteDto { Map = map, BossId = boss.Id, RouteIndex = routeIndex };
+            config.BossRoutes.Add(route);
+        }
+
+        route.Points.Add(BossRoutePointDto.FromVector3(pos, kind));
+        config.Save();
+    }
+
+    private void UpdateRoutePointPosition(ExpeditionMap map, BossEntry boss, int routeIndex, int pointIndex, BossRouteDto? sourceRoute)
+    {
+        var pos = DalamudApi.ObjectTable.LocalPlayer?.Position;
+        if (!pos.HasValue)
+        {
+            statusText = "无法读取当前位置。";
+            LogHelper.Chat(statusText);
+            return;
+        }
+
+        var route = GetOrCreateEditableRoute(map, boss, routeIndex, sourceRoute);
+        if (route == null || pointIndex < 0 || pointIndex >= route.Points.Count)
+            return;
+
+        var kind = route.Points[pointIndex].Kind;
+        route.Points[pointIndex] = BossRoutePointDto.FromVector3(pos.Value, kind);
+        config.Save();
+        statusText = $"已将 {boss.Abbreviation} 路线 {routeIndex + 1} 第 {pointIndex + 1} 点更正为当前位置。";
+        LogHelper.Chat(statusText);
+    }
+
+    private void ToggleRoutePointKind(ExpeditionMap map, BossEntry boss, int routeIndex, int pointIndex, BossRouteDto? sourceRoute)
+    {
+        if (sourceRoute == null || pointIndex < 0 || pointIndex >= sourceRoute.Points.Count)
+            return;
+
+        var route = GetOrCreateEditableRoute(map, boss, routeIndex, sourceRoute);
+
+        if (route == null || pointIndex >= route.Points.Count)
+            return;
+
+        route.Points[pointIndex].Kind = route.Points[pointIndex].Kind == BossRoutePointKind.Forced
+            ? BossRoutePointKind.Normal
+            : BossRoutePointKind.Forced;
+        config.Save();
+    }
+
+    private BossRouteDto? GetOrCreateEditableRoute(ExpeditionMap map, BossEntry boss, int routeIndex, BossRouteDto? sourceRoute)
+    {
+        if (sourceRoute == null)
+            return null;
+
+        var route = config.BossRoutes.FirstOrDefault(item => item.Map == map && item.BossId == boss.Id && item.RouteIndex == routeIndex);
+        if (route != null)
+            return route;
+
+        route = new BossRouteDto
+        {
+            Map = map,
+            BossId = boss.Id,
+            RouteIndex = routeIndex,
+            Points = sourceRoute.Points.Select(point => new BossRoutePointDto(point.X, point.Y, point.Z, point.Kind)).ToList(),
+        };
+        config.BossRoutes.Add(route);
+        return route;
+    }
+
+    private void NavigateToRoutePoint(BossEntry boss, BossRoutePointDto point)
+    {
+        var target = point.ToVector3();
+        if (point.Kind == BossRoutePointKind.Forced)
+        {
+            if (!vnav.NavigateForcedTo(target))
+            {
+                statusText = $"强制直线前往 {boss.Abbreviation} 航点失败。";
+                return;
+            }
+
+            statusText = $"强制直线前往 {boss.Abbreviation} 航点 ({target.X:F1}, {target.Y:F1}, {target.Z:F1})。";
+        }
+        else
+        {
+            vnav.NavigateTo(target);
+            statusText = $"导航到 {boss.Abbreviation} 航点 ({target.X:F1}, {target.Y:F1}, {target.Z:F1})。";
+        }
+
+        LogHelper.Chat(statusText);
+    }
+
+    private void NavigateToBossPosition(BossEntry boss)
+    {
+        var position = BossPositionCatalog.Find(boss);
+        if (position == null)
+        {
+            statusText = $"未记录 {boss.Abbreviation} 的固定坐标，无法导航。";
+            LogHelper.Chat(statusText);
+            return;
+        }
+
+        var currentMap = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, config);
+        if (currentMap != boss.Map)
+        {
+            statusText = $"当前不在 {GetMapName(boss.Map)}，无法导航到 {boss.Abbreviation}。";
+            LogHelper.Chat(statusText);
+            return;
+        }
+
+        var preferredShardId = boss.Kind == BossEventKind.CriticalEncounter
+            ? VnavService.GetPreferredShardIdForCriticalEncounter(boss.Map, boss.Index)
+            : boss.FateId.HasValue ? VnavService.GetPreferredShardIdForFate(boss.FateId.Value) : null;
+        vnav.NavigateTo(position.Position, preferredShardId: preferredShardId);
+        statusText = $"导航到 {boss.Abbreviation} ({position.Position.X:F1}, {position.Position.Y:F1}, {position.Position.Z:F1})。";
+        LogHelper.Chat(statusText);
+    }
+
+    private void TestRoute(BossEntry boss, BossRouteDto? route)
+    {
+        if (route == null || route.Points.Count < 2)
+        {
+            statusText = $"{boss.Abbreviation} 路线 {route?.RouteIndex + 1 ?? 0} 至少需要 2 个航点才能测试。";
+            LogHelper.Chat(statusText);
+            return;
+        }
+
+        var finalTarget = route.Points[^1].ToVector3();
+        vnav.NavigateViaRoute(new[] { route }, finalTarget);
+        statusText = $"正在测试 {boss.Abbreviation} 路线 {route.RouteIndex + 1}，共 {route.Points.Count} 个航点。";
+        LogHelper.Chat(statusText);
+    }
+
+    private unsafe void MarkBossOnMap(BossEntry boss)
+    {
+        var position = BossPositionCatalog.Find(boss);
+        if (position == null)
+        {
+            statusText = $"未记录 {boss.Abbreviation} 的固定坐标，无法标记。";
+            LogHelper.Chat(statusText);
+            return;
+        }
+
+        try
+        {
+            if (!TryGetMapId(position.TerritoryType, out var mapId))
+            {
+                statusText = $"无法读取 TerritoryType={position.TerritoryType} 的地图 ID，无法标记。";
+                LogHelper.Chat(statusText);
+                return;
+            }
+
+            AgentMap.Instance()->SetFlagMapMarker(position.TerritoryType, mapId, position.Position);
+            statusText = $"已标记 {boss.Abbreviation} ({position.Position.X:F1}, {position.Position.Y:F1}, {position.Position.Z:F1})。";
+            LogHelper.Chat(statusText);
+        }
+        catch (Exception ex)
+        {
+            statusText = $"标记 {boss.Abbreviation} 失败: {ex.Message}";
+            LogHelper.Warning(ex, "设置地图标记失败。 ");
+        }
+    }
+
+    private static bool TryGetMapId(uint territoryType, out uint mapId)
+    {
+        mapId = 0;
+        var sheet = DalamudApi.DataManager.GetExcelSheet<TerritoryTypeSheet>();
+        var territory = sheet?.GetRow(territoryType);
+        if (territory == null)
+            return false;
+
+        mapId = territory.Value.Map.RowId;
+        return mapId != 0;
     }
 
     private void DrawAutoFateTargetTable(IReadOnlyList<BossEntry> bosses)

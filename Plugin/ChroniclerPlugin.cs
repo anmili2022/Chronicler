@@ -31,6 +31,11 @@ public sealed partial class ChroniclerPlugin : IDalamudPlugin
     private bool wasDead;
     private DateTime? postReturnIdleUtc;
     private bool autoNavWasEnabled;
+    private bool autoIslandCycleActive;
+    private bool autoIslandReentryStarted;
+    private DateTime autoIslandLeaveRequestedUtc = DateTime.MinValue;
+    private DateTime? autoIslandLeftUtc;
+    private readonly InstancePopulationProvider instancePopulationProvider = new();
 
     public string Name => "新月岛史官";
 
@@ -50,7 +55,7 @@ public sealed partial class ChroniclerPlugin : IDalamudPlugin
         criticalEncounterDetector = new CriticalEncounterDetector(stateService);
         currencyGainTracker = new CurrencyGainTracker();
         vnav = new VnavService(pluginInterface, Configuration);
-        ui = new PluginUI(Configuration, stateService, vnav, currencyGainTracker);
+        ui = new PluginUI(Configuration, stateService, vnav, currencyGainTracker, instancePopulationProvider);
 
         RegisterCommands();
         RegisterChatHandlers();

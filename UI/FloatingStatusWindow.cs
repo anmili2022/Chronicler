@@ -14,6 +14,7 @@ internal sealed class FloatingStatusWindow : Window
     private readonly Action toggleSettings;
     private readonly VnavService vnav;
     private readonly CurrencyGainTracker currencyGainTracker;
+    private bool collapsed;
 
     public FloatingStatusWindow(PluginConfiguration config, Action toggleSettings, VnavService vnav, CurrencyGainTracker currencyGainTracker)
         : base(
@@ -44,9 +45,9 @@ internal sealed class FloatingStatusWindow : Window
         if (ImGui.IsWindowHovered(ImGuiHoveredFlags.RootAndChildWindows) && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
             toggleSettings();
 
-        ImGui.PushStyleColor(ImGuiCol.Text, Yellow);
-        ImGui.TextUnformatted("FATE / CE");
-        ImGui.PopStyleColor();
+        if (DrawHeader())
+            collapsed = !collapsed;
+
         if (config.AutoNavigationEnabled)
         {
             ImGui.SameLine();
@@ -54,6 +55,10 @@ internal sealed class FloatingStatusWindow : Window
             ImGui.TextUnformatted("全自动中");
             ImGui.PopStyleColor();
         }
+
+        if (collapsed)
+            return;
+
         ImGui.Separator();
 
         var drewAny = false;
@@ -113,11 +118,28 @@ internal sealed class FloatingStatusWindow : Window
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("记录、更新待命点");
             ImGui.SameLine();
+            if (ImGui.SmallButton("Flag"))
+                vnav.NavigateToFlag();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("导航到当前地图 Flag");
+            ImGui.SameLine();
             if (ImGui.SmallButton("效率"))
                 currencyGainTracker.PrintEfficiency();
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("输出当前货币获取效率");
         }
+    }
+
+    private bool DrawHeader()
+    {
+        ImGui.PushStyleColor(ImGuiCol.Text, Yellow);
+        ImGui.TextUnformatted("FATE / CE");
+        ImGui.PopStyleColor();
+
+        var clicked = ImGui.IsItemClicked(ImGuiMouseButton.Left);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(collapsed ? "左键展开悬浮窗" : "左键折叠悬浮窗");
+        return clicked;
     }
 
     private static string FormatMapName(ExpeditionMap map)

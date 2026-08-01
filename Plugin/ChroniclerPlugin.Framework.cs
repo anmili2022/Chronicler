@@ -17,6 +17,9 @@ public sealed partial class ChroniclerPlugin
         {
             var currentMap = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, Configuration);
 
+            if (currentMap.HasValue && Configuration.AutoIslandLeavePlayerThreshold > 0)
+                instancePopulationProvider.Update(DateTime.UtcNow, Configuration.AutoIslandLeavePlayerThreshold);
+
             ProcessStandbyNavigation();
 
             if (Configuration.AutoDetectAppearances)
@@ -24,6 +27,9 @@ public sealed partial class ChroniclerPlugin
                 appearanceDetector.Update(currentMap);
                 criticalEncounterDetector.Update(currentMap, DalamudApi.ClientState.TerritoryType);
             }
+
+            if (ProcessAutoIslandRotation(currentMap))
+                return;
 
             UpdateAutoNavigation(currentMap);
         }
@@ -36,6 +42,100 @@ public sealed partial class ChroniclerPlugin
                 LogHelper.Warning(ex, "Framework 更新处理失败。 ");
             }
         }
+    }
+
+    private unsafe bool ProcessAutoIslandRotation(ExpeditionMap? currentMap)
+    {
+        if (!Configuration.AutoIslandRotationEnabled)
+        {
+            autoIslandCycleActive = false;
+            autoIslandReentryStarted = false;
+            autoIslandLeaveRequestedUtc = DateTime.MinValue;
+            autoIslandLeftUtc = null;
+            return false;
+        }
+
+        var now = DateTime.UtcNow;
+        if (autoIslandCycleActive)
+        {
+            if (currentMap.HasValue)
+            {
+                if (autoIslandReentryStarted)
+                {
+                    autoIslandCycleActive = false;
+                    autoIslandReentryStarted = false;
+                    autoIslandLeaveRequestedUtc = DateTime.MinValue;
+                    autoIslandLeftUtc = null;
+                    LogHelper.Chat("自动进出岛: 已重新进入新月岛。");
+                    return false;
+                }
+
+                return true;
+            }
+
+            autoIslandLeftUtc ??= now;
+            if (now - autoIslandLeftUtc.Value < TimeSpan.FromSeconds(Math.Max(0, Configuration.AutoIslandReenterDelaySeconds)))
+                return true;
+
+            if (!autoIslandReentryStarted)
+            {
+                Configuration.LastSelectedMap = Configuration.AutoIslandTargetMap;
+                Configuration.Save();
+                autoIslandReentryStarted = true;
+                LogHelper.Chat($"自动进出岛: 已离岛，开始进入{GetMapName(Configuration.AutoIslandTargetMap)}。");
+                vnav.GoToCrescentIsle();
+            }
+
+            return true;
+        }
+
+        if (!currentMap.HasValue)
+            return false;
+
+        if (now - autoIslandLeaveRequestedUtc < TimeSpan.FromSeconds(10))
+            return true;
+
+        var playerCount = instancePopulationProvider.CurrentPopulation;
+        var leaveByPlayers = Configuration.AutoIslandLeavePlayerThreshold > 0
+                             && instancePopulationProvider.IsConfirmedBelow(Configuration.AutoIslandLeavePlayerThreshold);
+
+        var leaveByTime = false;
+        var content = PublicContentOccultCrescent.GetInstance();
+        if (content != null && Configuration.AutoIslandLeaveTimeThresholdMinutes > 0)
+        {
+            var timeLeft = content->ContentTimeLeft;
+            var thresholdSeconds = Configuration.AutoIslandLeaveTimeThresholdMinutes * 60f;
+            leaveByTime = timeLeft > 0f && timeLeft < thresholdSeconds;
+        }
+
+        if (!leaveByPlayers && !leaveByTime)
+            return false;
+
+        var reason = leaveByPlayers
+            ? $"人数 {playerCount}<{Configuration.AutoIslandLeavePlayerThreshold}"
+            : $"任务剩余 {FormatMinutesSeconds(content->ContentTimeLeft)}<{Configuration.AutoIslandLeaveTimeThresholdMinutes} 分钟";
+        vnav.Stop();        if (!DalamudApi.Commands.ProcessCommand("/pdr leaveduty"))
+        {
+            LogHelper.Chat("自动进出岛: 未找到 /pdr leaveduty 命令，请确认 PDR 已安装并加载。");
+            autoIslandLeaveRequestedUtc = now;
+            return true;
+        }
+
+        autoIslandCycleActive = true;
+        autoIslandReentryStarted = false;
+        autoIslandLeaveRequestedUtc = now;
+        autoIslandLeftUtc = null;
+        LogHelper.Chat($"自动进出岛: {reason}，已执行 /pdr leaveduty，{Configuration.AutoIslandReenterDelaySeconds} 秒后重新进岛。");
+        return true;
+    }
+
+    private static string FormatMinutesSeconds(float seconds)
+    {
+        if (seconds <= 0f)
+            return "--:--";
+
+        var totalSeconds = Math.Max(0, (int)MathF.Ceiling(seconds));
+        return $"{totalSeconds / 60}:{totalSeconds % 60:D2}";
     }
 
     private unsafe void UpdateAutoNavigation(ExpeditionMap? currentMap)
@@ -63,13 +163,7 @@ public sealed partial class ChroniclerPlugin
                 && !IsAtCampOrStandby(currentMap.Value))
             {
                 autoNavWasEnabled = true;
-                LogHelper.Chat("全自动: 开启时不在营地，先回营地。");
-                vnav.ReturnToBaseCamp();
-                pendingAutoReturnMap = currentMap;
-                pendingAutoReturnStartedUtc = DateTime.UtcNow;
-                pendingAutoReturnBaseCampUtc = null;
-                pendingAutoReturnSawBetweenAreas = false;
-                pendingAutoReturnRetryCount = 0;
+                LogHelper.Chat("全自动: 开启时不在营地，直接扫描目标（不再强制先回营地）。");
                 if (Configuration.HasAutoReturnStandbyPoint)
                 {
                     pendingStandbyNavStartedUtc = DateTime.UtcNow;
@@ -114,13 +208,7 @@ public sealed partial class ChroniclerPlugin
 
         if (string.IsNullOrWhiteSpace(activeAutoNavigationKey))
         {
-            if (!IsAtCampOrStandby(currentMap.Value))
-            {
-                postReturnIdleUtc = null;
-                return;
-            }
-
-            if (postReturnIdleUtc.HasValue)
+            if (IsAtCampOrStandby(currentMap.Value) && postReturnIdleUtc.HasValue)
             {
                 if (DateTime.UtcNow - postReturnIdleUtc.Value < TimeSpan.FromSeconds(10))
                     return;
@@ -294,7 +382,7 @@ public sealed partial class ChroniclerPlugin
             }
 
             LogHelper.Chat($"导航调试: 匹配到 {boss.Abbreviation}(FateId={boss.FateId}), 开始导航");
-            NavigateAutoTargetOnce(key, $"FATE {boss.Abbreviation}", match.Position, VnavService.GetPreferredShardIdForFate(match.FateId), dismountOnArrival: true);
+            NavigateAutoTargetOnce(key, $"FATE {boss.Abbreviation}", match.Position, VnavService.GetPreferredShardIdForFate(match.FateId), null, dismountOnArrival: true, boss);
             return true;
         }
 
@@ -329,7 +417,7 @@ public sealed partial class ChroniclerPlugin
             if (activeAutoNavigationKey != key && ShouldSkipAutoTarget(ev.State == DynamicEventState.Battle, ev.Progress))
                 continue;
 
-            NavigateAutoTargetOnce(key, $"CE {boss.Abbreviation}", ev.MapMarker.Position, VnavService.GetPreferredShardIdForCriticalEncounter(map, boss.Index), ev.MapMarker.Radius);
+            NavigateAutoTargetOnce(key, $"CE {boss.Abbreviation}", ev.MapMarker.Position, VnavService.GetPreferredShardIdForCriticalEncounter(map, boss.Index), ev.MapMarker.Radius, boss: boss);
             return true;
         }
 
@@ -339,7 +427,7 @@ public sealed partial class ChroniclerPlugin
     private bool ShouldSkipAutoTarget(bool isBattle, int progress)
         => isBattle && progress >= Math.Clamp(Configuration.AutoSkipProgressPercent, 0, 100);
 
-    private void NavigateAutoTargetOnce(string key, string label, Vector3 pos, uint? preferredShardId = null, float? randomRadius = null, bool dismountOnArrival = false)
+    private void NavigateAutoTargetOnce(string key, string label, Vector3 pos, uint? preferredShardId = null, float? randomRadius = null, bool dismountOnArrival = false, BossEntry? boss = null)
     {
         if (activeAutoNavigationKey == key)
             return;
@@ -361,10 +449,31 @@ public sealed partial class ChroniclerPlugin
         }
 
         ClearPendingAutoNavigation();
+        ClearPendingStandbyNavigation();
         activeAutoNavigationKey = key;
         autoNavigationReturned = false;
         autoReturnDueUtc = null;
         LogHelper.Chat($"全自动: 导航到 {label}");
+
+        var useTeleport = vnav.ShouldTeleportToTarget(pos, preferredShardId);
+        if (!useTeleport)
+        {
+            if (randomRadius.HasValue)
+                vnav.NavigateToRandomInRadius(pos, randomRadius.Value, preferredShardId: preferredShardId, dismountOnArrival: dismountOnArrival);
+            else
+                vnav.NavigateTo(pos, preferredShardId: preferredShardId, dismountOnArrival: dismountOnArrival);
+            return;
+        }
+
+        var routes = boss == null
+            ? Array.Empty<BossRouteDto>()
+            : RouteCatalog.GetRoutes(boss.Map, boss.Id, Configuration);
+        if (routes.Count > 0)
+        {
+            vnav.NavigateViaRoute(routes, pos, preferredShardId: preferredShardId, randomRadius: randomRadius, dismountOnArrival: dismountOnArrival);
+            return;
+        }
+
         if (randomRadius.HasValue)
             vnav.NavigateToRandomInRadius(pos, randomRadius.Value, preferredShardId: preferredShardId, dismountOnArrival: dismountOnArrival);
         else
@@ -410,6 +519,13 @@ public sealed partial class ChroniclerPlugin
     {
         if (!pendingStandbyNavUtc.HasValue)
             return;
+
+        if (!string.IsNullOrWhiteSpace(activeAutoNavigationKey)
+            || !string.IsNullOrWhiteSpace(pendingAutoNavigationKey))
+        {
+            ClearPendingStandbyNavigation();
+            return;
+        }
 
         if (pendingStandbyNavStartedUtc.HasValue
             && DateTime.UtcNow - pendingStandbyNavStartedUtc.Value > TimeSpan.FromSeconds(30))

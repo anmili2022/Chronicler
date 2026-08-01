@@ -22,4 +22,5 @@ internal sealed class DalamudApi
     [PluginService] public static ICommandManager Commands { get; private set; } = null!;
     [PluginService] public static IPluginLog Log { get; private set; } = null!;
     [PluginService] public static IDataManager DataManager { get; private set; } = null!;
+    [PluginService] public static IGameGui GameGui { get; private set; } = null!;
 }

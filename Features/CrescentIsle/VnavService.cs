@@ -2,10 +2,13 @@ using System.Numerics;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using FFXIVClientStructs.FFXIV.Client.Game.Control;
+using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
 namespace Chronicler;
@@ -17,7 +20,9 @@ internal sealed class VnavService : IDisposable
     private readonly PluginConfiguration config;
     private readonly ICallGateSubscriber<bool> isReady;
     private readonly ICallGateSubscriber<Vector3, bool, bool> pathfindAndMoveTo;
+    private readonly ICallGateSubscriber<List<Vector3>, bool, object> moveTo;
     private readonly ICallGateSubscriber<Vector3, float, float, Vector3?> nearestPoint;
+    private readonly ICallGateSubscriber<Vector3?> flagToPoint;
     private readonly ICallGateSubscriber<object> stop;
 
     // 可选 Lifestream IPC（不强制依赖）
@@ -55,13 +60,16 @@ internal sealed class VnavService : IDisposable
         this.config = config;
         isReady = pi.GetIpcSubscriber<bool>("vnavmesh.Nav.IsReady");
         pathfindAndMoveTo = pi.GetIpcSubscriber<Vector3, bool, bool>("vnavmesh.SimpleMove.PathfindAndMoveTo");
+        moveTo = pi.GetIpcSubscriber<List<Vector3>, bool, object>("vnavmesh.Path.MoveTo");
         nearestPoint = pi.GetIpcSubscriber<Vector3, float, float, Vector3?>("vnavmesh.Query.Mesh.NearestPoint");
+        flagToPoint = pi.GetIpcSubscriber<Vector3?>("vnavmesh.Query.Mesh.FlagToPoint");
         stop = pi.GetIpcSubscriber<object>("vnavmesh.Path.Stop");
 
         TryInitializeLifestream();
 
         DalamudApi.Framework.Update += OnFrameworkUpdate;
         DalamudApi.AddonLifecycle.RegisterListener(AddonEvent.PostSetup, "SelectYesno", OnSelectYesnoPostSetup);
+        DalamudApi.AddonLifecycle.RegisterListener(AddonEvent.PostSetup, "SelectString", OnSelectStringPostSetup);
     }
 
     private void TryInitializeLifestream()
@@ -134,6 +142,10 @@ internal sealed class VnavService : IDisposable
     private uint pendingTeleportDestinationId;
     private bool pendingTeleportDestinationIsPlaceNameId;
     private DateTime pendingTeleportStartedUtc;
+    private DateTime? pendingTeleportReturnConfirmedUtc;
+    private bool pendingTeleportSawBetweenAreas;
+    private DateTime? pendingTeleportBaseCampUtc;
+    private bool pendingTeleportWalkingToSource;
     private DateTime lastTeleportCheckUtc = DateTime.MinValue;
     private DateTime lastTeleportDebugUtc = DateTime.MinValue;
     private bool pendingReturnConfirm;
@@ -145,13 +157,26 @@ internal sealed class VnavService : IDisposable
     private bool pendingReturnNavigationSawBetweenAreas;
     private DateTime? pendingReturnNavigationConfirmedUtc;
 
-    private enum GoToCrescentStep { None, WaitingTuliyollal, WaitingOccultVillage, MovingToEntrance }
+    private enum GoToCrescentStep { None, WaitingTuliyollal, WaitingOccultVillage, MovingToEntrance, WaitingEntranceMenu }
     private GoToCrescentStep goToCrescentStep;
     private DateTime goToCrescentStepStartedUtc;
     private DateTime goToCrescentMoveStartedUtc;
     private Vector3 goToCrescentLastPosition;
     private int goToCrescentRetryCount;
     private bool goToCrescentStartedInTuliyollal;
+    private DateTime goToCrescentLastEntranceInteractionUtc = DateTime.MinValue;
+
+    // 路线导航状态机
+    private BossRoutePointDto[]? routePoints;
+    private int routePointIndex;
+    private DateTime routePointStartedUtc;
+    private DateTime lastRouteCheckUtc = DateTime.MinValue;
+    private Vector3 routeLastPosition;
+    private int routeStuckRetryCount;
+    private Vector3 routeFinalTarget;
+    private float? routeRandomRadius;
+    private uint? routePreferredShardId;
+    private bool routeDismountOnArrival;
 
     public bool IsReady
     {
@@ -187,8 +212,13 @@ internal sealed class VnavService : IDisposable
         => map == ExpeditionMap.North && bossIndex == 3 ? 69420406u : null;
 
     public unsafe void NavigateTo(Vector3 dest, bool fly = false, uint? preferredShardId = null, bool dismountOnArrival = false)
+        => NavigateToInternal(dest, fly, preferredShardId, dismountOnArrival, clearRouteNavigation: true);
+
+    private unsafe void NavigateToInternal(Vector3 dest, bool fly, uint? preferredShardId, bool dismountOnArrival, bool clearRouteNavigation)
     {
         ClearPendingNavigation();
+        if (clearRouteNavigation)
+            ClearRouteNavigation();
         TryInitializeLifestream();
 
         try
@@ -203,7 +233,7 @@ internal sealed class VnavService : IDisposable
             if (aethernetTeleportById != null || aethernetTeleportByPlaceNameId != null)
             {
                 var playerPos = DalamudApi.ObjectTable.LocalPlayer?.Position;
-                if (playerPos.HasValue && Vector3.Distance(playerPos.Value, target) > 80f)
+                if (playerPos.HasValue && ShouldTeleportToTarget(target, preferredShardId))
                 {
                     var currentMap = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, config);
                     if (!currentMap.HasValue)
@@ -217,24 +247,15 @@ internal sealed class VnavService : IDisposable
                     nearest ??= FindNearestShard(map, target);
                     if (nearest.HasValue && nearest.Value.Id != 0)
                     {
-                        var distToShard = Vector3.Distance(playerPos.Value, nearest.Value.Pos);
+                        var playerToTarget = Vector3.Distance(playerPos.Value, target);
                         var targetDistToShard = Vector3.Distance(target, nearest.Value.Pos);
-                        DebugChat($"导航调试: 地图={map} 最近传送点 ID={nearest.Value.Id} 类型={(nearest.Value.IsPlaceNameId ? "PlaceName" : "Aetheryte")} 玩家距={distToShard:F1} 目标距={targetDistToShard:F1}");
-                        if (distToShard > 30f)
+                        DebugChat($"导航调试: 地图={map} 玩家距目标={playerToTarget:F1} 目标传送点 ID={nearest.Value.Id} 目标最近的水晶距目标={targetDistToShard:F1}");
+                        var camp = GetCampShard(map);
+                        if (camp.HasValue)
                         {
-                            var source = FindNearestShard(map, playerPos.Value);
-                            if (!source.HasValue)
-                            {
-                                StartMove(target, fly);
-                                return;
-                            }
-
-                            StartMoveThenTeleport(source.Value.Pos, nearest.Value.Id, nearest.Value.IsPlaceNameId, target, fly);
+                            StartMoveThenTeleport(camp.Value.Pos, nearest.Value.Id, nearest.Value.IsPlaceNameId, target, fly);
                             return;
                         }
-
-                        if (TryTeleportToShard(nearest.Value.Id, nearest.Value.IsPlaceNameId, target, fly))
-                            return;
                     }
                 }
             }
@@ -250,6 +271,191 @@ internal sealed class VnavService : IDisposable
     public void NavigateToRandomInRadius(Vector3 center, float radius, bool fly = false, uint? preferredShardId = null, bool dismountOnArrival = false)
     {
         NavigateTo(PickRandomPointInRadius(center, radius), fly, preferredShardId, dismountOnArrival);
+    }
+
+    public bool NavigateToFlag()
+    {
+        try
+        {
+            var position = flagToPoint.InvokeFunc();
+            if (!position.HasValue)
+            {
+                LogHelper.Chat("当前地图没有可用的 Flag 坐标。");
+                return false;
+            }
+
+            NavigateTo(position.Value);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogHelper.Chat($"读取 Flag 坐标失败: {ex.Message}");
+            return false;
+        }
+    }
+
+    public bool NavigateForcedTo(Vector3 target)
+    {
+        Stop();
+        return StartForcedMove(target);
+    }
+
+    /// <summary>按路线导航：随机选一条有效路线逐点前往，走完最后用单点导航收尾。</summary>
+    public void NavigateViaRoute(IReadOnlyList<BossRouteDto> routes, Vector3 finalTarget, bool fly = false, uint? preferredShardId = null, float? randomRadius = null, bool dismountOnArrival = false)
+    {
+        ClearPendingNavigation();
+        ClearRouteNavigation();
+
+        var valid = routes.Where(route => route.Points.Count >= 2).ToList();
+        if (valid.Count == 0)
+        {
+            NavigateTo(finalTarget, fly, preferredShardId, dismountOnArrival);
+            return;
+        }
+
+        var chosen = valid[Random.Shared.Next(valid.Count)];
+        routePoints = chosen.Points.ToArray();
+        routePointIndex = 0;
+        routeStuckRetryCount = 0;
+        routeFinalTarget = finalTarget;
+        routeRandomRadius = randomRadius;
+        routePreferredShardId = preferredShardId;
+        routeDismountOnArrival = dismountOnArrival;
+        LogHelper.Chat($"路线导航: 使用 {chosen.RouteIndex + 1} 号路线，共 {routePoints.Length} 个航点。");
+        StartRoutePoint();
+    }
+
+    private void StartRoutePoint()
+    {
+        var point = routePoints![routePointIndex];
+        var target = point.ToVector3();
+        if (point.Kind == BossRoutePointKind.Forced)
+        {
+            routePointStartedUtc = DateTime.UtcNow;
+            routeLastPosition = DalamudApi.ObjectTable.LocalPlayer?.Position ?? target;
+            LogHelper.Chat($"路线导航: 强制前往航点 {routePointIndex + 1}/{routePoints.Length} ({target.X:F1}, {target.Y:F1}, {target.Z:F1})");
+            StartForcedMove(target);
+            return;
+        }
+
+        var snapped = SnapToNavmesh(target);
+        if (Vector3.Distance(snapped, target) > 8f)
+        {
+            LogHelper.Chat($"路线导航: 航点 {routePointIndex + 1} 附近无网格，跳过。");
+            AdvanceRoutePoint();
+            return;
+        }
+
+        routePointStartedUtc = DateTime.UtcNow;
+        routeLastPosition = DalamudApi.ObjectTable.LocalPlayer?.Position ?? target;
+        LogHelper.Chat($"路线导航: 前往航点 {routePointIndex + 1}/{routePoints.Length} ({snapped.X:F1}, {snapped.Y:F1}, {snapped.Z:F1})");
+        NavigateToInternal(snapped, false, routePreferredShardId, false, clearRouteNavigation: false);
+    }
+
+    private void AdvanceRoutePoint()
+    {
+        routePointIndex++;
+        if (routePointIndex >= routePoints!.Length)
+        {
+            LogHelper.Chat("路线导航: 全部航点已走完，前往目标。");
+            var finalTarget = routeFinalTarget;
+            var radius = routeRandomRadius;
+            var preferred = routePreferredShardId;
+            var dismount = routeDismountOnArrival;
+            ClearRouteNavigation();
+            if (radius.HasValue)
+                NavigateToRandomInRadius(finalTarget, radius.Value, false, preferred, dismount);
+            else
+                NavigateTo(finalTarget, false, preferred, dismount);
+            return;
+        }
+
+        StartRoutePoint();
+    }
+
+    private void ProcessRouteNavigation()
+    {
+        if (routePoints == null || routePoints.Length == 0)
+            return;
+
+        var now = DateTime.UtcNow;
+        if (now - lastRouteCheckUtc < TimeSpan.FromMilliseconds(500))
+            return;
+
+        lastRouteCheckUtc = now;
+        if (pendingTeleportTarget.HasValue || pendingTarget.HasValue || pendingMoveTarget.HasValue)
+            return;
+
+        var playerPos = DalamudApi.ObjectTable.LocalPlayer?.Position;
+        if (!playerPos.HasValue)
+            return;
+
+        var current = routePoints[routePointIndex].ToVector3();
+        if (HorizontalDistance(playerPos.Value, current) <= 4f)
+        {
+            LogHelper.Chat($"路线导航: 到达航点 {routePointIndex + 1}/{routePoints.Length}。");
+            AdvanceRoutePoint();
+            return;
+        }
+
+        if (now - routePointStartedUtc < TimeSpan.FromSeconds(7))
+            return;
+
+        if (Vector3.Distance(playerPos.Value, routeLastPosition) >= 2.5f)
+        {
+            routePointStartedUtc = now;
+            routeLastPosition = playerPos.Value;
+            return;
+        }
+
+        if (routeStuckRetryCount >= 3)
+        {
+            LogHelper.Chat("路线导航: 多次重试后仍未移动，放弃路线直接前往目标。");
+            var finalTarget = routeFinalTarget;
+            var radius = routeRandomRadius;
+            var preferred = routePreferredShardId;
+            var dismount = routeDismountOnArrival;
+            ClearRouteNavigation();
+            if (radius.HasValue)
+                NavigateToRandomInRadius(finalTarget, radius.Value, false, preferred, dismount);
+            else
+                NavigateTo(finalTarget, false, preferred, dismount);
+            return;
+        }
+
+        routeStuckRetryCount++;
+        LogHelper.Chat($"路线导航: 航点未移动，重试 {routeStuckRetryCount}/3。");
+        StartRoutePoint();
+    }
+
+    private bool StartForcedMove(Vector3 target)
+    {
+        try { stop.InvokeAction(); } catch { }
+        try
+        {
+            moveTo.InvokeAction([target], false);
+            DebugChat("导航调试: 开始强制直线移动。 ");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogHelper.Chat($"强制移动失败: {ex.Message}");
+            return false;
+        }
+    }
+
+    private void ClearRouteNavigation()
+    {
+        routePoints = null;
+        routePointIndex = 0;
+        routePointStartedUtc = DateTime.MinValue;
+        lastRouteCheckUtc = DateTime.MinValue;
+        routeLastPosition = default;
+        routeStuckRetryCount = 0;
+        routeFinalTarget = default;
+        routeRandomRadius = null;
+        routePreferredShardId = null;
+        routeDismountOnArrival = false;
     }
 
     /// <summary>从任意地图导航到新月岛入口。</summary>
@@ -516,6 +722,10 @@ internal sealed class VnavService : IDisposable
             case GoToCrescentStep.MovingToEntrance:
                 ProcessCrescentEntranceMove();
                 break;
+
+            case GoToCrescentStep.WaitingEntranceMenu:
+                ProcessEntranceMenu();
+                break;
         }
     }
 
@@ -528,9 +738,11 @@ internal sealed class VnavService : IDisposable
 
         if (Vector3.Distance(player.Position, entrance) <= 4f)
         {
-            ClearGoToCrescentIsle();
             try { stop.InvokeAction(); } catch { }
-            LogHelper.Chat("已到达新月岛入口。");
+            goToCrescentStep = GoToCrescentStep.WaitingEntranceMenu;
+            goToCrescentStepStartedUtc = DateTime.UtcNow;
+            goToCrescentLastEntranceInteractionUtc = DateTime.MinValue;
+            TryInteractWithEntranceNpc();
             return;
         }
 
@@ -581,6 +793,46 @@ internal sealed class VnavService : IDisposable
         StartCrescentEntrancePathfind(destination);
     }
 
+    private void ProcessEntranceMenu()
+    {
+        var now = DateTime.UtcNow;
+        if (now - goToCrescentLastEntranceInteractionUtc < TimeSpan.FromSeconds(2))
+            return;
+
+        goToCrescentLastEntranceInteractionUtc = now;
+        TryInteractWithEntranceNpc();
+    }
+
+    private unsafe bool TryInteractWithEntranceNpc()
+    {
+        var player = DalamudApi.ObjectTable.LocalPlayer;
+        if (player == null)
+            return false;
+
+        var npc = DalamudApi.ObjectTable.FirstOrDefault(obj =>
+            obj is ICharacter
+            && obj.Name.TextValue.Equals("杰弗瑞", StringComparison.Ordinal)
+            && HorizontalDistance(obj.Position, player.Position) <= 8f);
+        if (npc == null)
+            return false;
+
+        try
+        {
+            var targetSystem = TargetSystem.Instance();
+            if (targetSystem == null)
+                return false;
+
+            targetSystem->InteractWithObject((GameObject*)npc.Address);
+            LogHelper.Chat("正在与杰弗瑞交互，等待选择进岛地图。");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogHelper.Warning(ex, "与杰弗瑞交互失败。");
+            return false;
+        }
+    }
+
     private void ClearGoToCrescentIsle()
     {
         goToCrescentStep = GoToCrescentStep.None;
@@ -588,6 +840,7 @@ internal sealed class VnavService : IDisposable
         goToCrescentLastPosition = default;
         goToCrescentRetryCount = 0;
         goToCrescentStartedInTuliyollal = false;
+        goToCrescentLastEntranceInteractionUtc = DateTime.MinValue;
     }
 
     private Vector3 PickRandomPointInRadius(Vector3 center, float radius)
@@ -647,6 +900,7 @@ internal sealed class VnavService : IDisposable
         ProcessPendingTeleport();
         ProcessPendingReturnNavigation();
         ProcessPendingDismount();
+        ProcessRouteNavigation();
         ProcessGoToCrescentIsle();
 
         if (!pendingTarget.HasValue)
@@ -718,7 +972,7 @@ internal sealed class VnavService : IDisposable
 
     private void ClearPendingNavigation() => pendingTarget = null;
 
-    private void StartMoveThenTeleport(Vector3 sourcePos, uint destinationId, bool destinationIsPlaceNameId, Vector3 target, bool fly)
+    private unsafe void StartMoveThenTeleport(Vector3 sourcePos, uint destinationId, bool destinationIsPlaceNameId, Vector3 target, bool fly)
     {
         pendingTeleportTarget = target;
         pendingTeleportFly = fly;
@@ -726,10 +980,37 @@ internal sealed class VnavService : IDisposable
         pendingTeleportDestinationId = destinationId;
         pendingTeleportDestinationIsPlaceNameId = destinationIsPlaceNameId;
         pendingTeleportStartedUtc = DateTime.UtcNow;
+        pendingTeleportReturnConfirmedUtc = null;
+        pendingTeleportSawBetweenAreas = false;
+        pendingTeleportBaseCampUtc = null;
+        pendingTeleportWalkingToSource = false;
         lastTeleportCheckUtc = DateTime.MinValue;
         lastTeleportDebugUtc = DateTime.MinValue;
-        DebugChat("导航调试: 先导航到最近传送点，再 Lifestream 传送。");
-        StartPathfind(sourcePos, false);
+        DebugChat("导航调试: 先回营地，再 Lifestream 传送。");
+
+        var playerPos = DalamudApi.ObjectTable.LocalPlayer?.Position;
+        if (playerPos.HasValue && HorizontalDistance(playerPos.Value, sourcePos) <= 80f)
+        {
+            pendingTeleportSawBetweenAreas = true;
+            DebugChat("导航调试: 已在营地，直接前往营地大水晶。");
+            return;
+        }
+
+        try
+        {
+            pendingReturnConfirm = true;
+            pendingReturnConfirmStartedUtc = DateTime.UtcNow;
+            ActionManager.Instance()->UseAction(ActionType.GeneralAction, 8);
+            DebugChat("导航调试: 使用亚返回回营地。");
+        }
+        catch (Exception ex)
+        {
+            ClearPendingTeleport();
+            pendingReturnConfirm = false;
+            LogHelper.Warning(ex, "使用亚返回失败。");
+            LogHelper.Chat($"使用亚返回失败，改为直接步行导航: {ex.Message}");
+            StartMove(target, fly);
+        }
     }
 
     private void ProcessPendingTeleport()
@@ -756,13 +1037,44 @@ internal sealed class VnavService : IDisposable
             return;
         }
 
+        if (DalamudApi.Condition[ConditionFlag.BetweenAreas]
+            || DalamudApi.Condition[ConditionFlag.BetweenAreas51])
+        {
+            pendingTeleportSawBetweenAreas = true;
+            return;
+        }
+
+        var confirmedLongEnough = pendingTeleportReturnConfirmedUtc.HasValue
+                                  && now - pendingTeleportReturnConfirmedUtc.Value >= TimeSpan.FromSeconds(8);
+        if (!pendingTeleportSawBetweenAreas && !confirmedLongEnough)
+        {
+            PrintTeleportDebug(now, Vector3.Distance(playerPos.Value, pendingTeleportSourcePos), GetActiveAethernetId());
+            return;
+        }
+
         var distToSource = Vector3.Distance(playerPos.Value, pendingTeleportSourcePos);
         var activeAethernetId = GetActiveAethernetId();
-        if (distToSource > 30f || activeAethernetId == 0)
+        if (distToSource > 8f)
         {
+            pendingTeleportBaseCampUtc = null;
+            if (!pendingTeleportWalkingToSource)
+            {
+                pendingTeleportWalkingToSource = true;
+                DebugChat("导航调试: 已回营地，前往营地大水晶。");
+                StartPathfind(pendingTeleportSourcePos, false);
+            }
+
             PrintTeleportDebug(now, distToSource, activeAethernetId);
             return;
         }
+
+        pendingTeleportWalkingToSource = false;
+        pendingTeleportBaseCampUtc ??= now;
+        if (now - pendingTeleportBaseCampUtc.Value < TimeSpan.FromSeconds(2))
+            return;
+
+        if (activeAethernetId == 0)
+            DebugChat("导航调试: 已到营地大水晶附近但未检测到 active，尝试 Lifestream 传送。");
 
         try { stop.InvokeAction(); } catch { }
         var finalTarget = pendingTeleportTarget.Value;
@@ -805,7 +1117,14 @@ internal sealed class VnavService : IDisposable
         return true;
     }
 
-    private void ClearPendingTeleport() => pendingTeleportTarget = null;
+    private void ClearPendingTeleport()
+    {
+        pendingTeleportTarget = null;
+        pendingTeleportReturnConfirmedUtc = null;
+        pendingTeleportSawBetweenAreas = false;
+        pendingTeleportBaseCampUtc = null;
+        pendingTeleportWalkingToSource = false;
+    }
 
     private uint GetActiveAethernetId()
     {
@@ -958,6 +1277,44 @@ internal sealed class VnavService : IDisposable
         return null;
     }
 
+    private static (Vector3 Pos, uint Id, bool IsPlaceNameId)? GetCampShard(ExpeditionMap map)
+    {
+        var camp = Shards.FirstOrDefault(s => s.Map == map);
+        return (camp.Pos, camp.Id, camp.IsPlaceNameId);
+    }
+
+    /// <summary>判定目标是否值得走传送：当前位置到目标较远，且目标附近水晶到目标明显更近。</summary>
+    public bool ShouldTeleportToTarget(Vector3 target, uint? preferredShardId = null)
+    {
+        var playerPos = DalamudApi.ObjectTable.LocalPlayer?.Position;
+        if (!playerPos.HasValue)
+            return false;
+
+        var currentMap = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, config);
+        if (!currentMap.HasValue)
+            return false;
+
+        var nearest = preferredShardId.HasValue
+            ? FindShardById(currentMap.Value, preferredShardId.Value)
+            : FindNearestShard(currentMap.Value, target);
+        nearest ??= FindNearestShard(currentMap.Value, target);
+        if (!nearest.HasValue || nearest.Value.Id == 0)
+            return false;
+
+        var playerToTarget = Vector3.Distance(playerPos.Value, target);
+        var shardToTarget = Vector3.Distance(target, nearest.Value.Pos);
+
+        var camp = GetCampShard(currentMap.Value);
+        if (camp.HasValue && HorizontalDistance(playerPos.Value, camp.Value.Pos) < 80f)
+        {
+            var shouldTeleportFromCamp = nearest.Value.Id != camp.Value.Id;
+            DebugChat($"导航调试: 已在营地 玩家距目标={playerToTarget:F1} 目标最近的水晶距目标={shardToTarget:F1} 走传送={shouldTeleportFromCamp}");
+            return shouldTeleportFromCamp;
+        }
+
+        return playerToTarget + config.AutoNavigationTeleportThreshold > shardToTarget;
+    }
+
     /// <summary>检测当前所在传送点的 PlaceNameId（需已安装 Lifestream）。</summary>
     public uint? GetCurrentAetheryteId()
     {
@@ -972,6 +1329,7 @@ internal sealed class VnavService : IDisposable
         ClearPendingMove();
         ClearPendingReturnNavigation();
         ClearPendingDismount();
+        ClearRouteNavigation();
         ClearGoToCrescentIsle();
         try { stop.InvokeAction(); }
         catch { }
@@ -1167,16 +1525,40 @@ internal sealed class VnavService : IDisposable
         addon->FireCallbackInt(0);
         if (pendingReturnNavigationTarget.HasValue)
             pendingReturnNavigationConfirmedUtc = DateTime.UtcNow;
+        if (pendingTeleportTarget.HasValue)
+            pendingTeleportReturnConfirmedUtc = DateTime.UtcNow;
         DebugChat("导航调试: 已确认回营地。");
+    }
+
+    private unsafe void OnSelectStringPostSetup(AddonEvent type, AddonArgs args)
+    {
+        _ = type;
+        if (goToCrescentStep != GoToCrescentStep.WaitingEntranceMenu
+            || DateTime.UtcNow - goToCrescentStepStartedUtc > TimeSpan.FromSeconds(30))
+            return;
+
+        var addon = (AtkUnitBase*)args.Addon.Address;
+        if (addon == null || !addon->IsVisible)
+            return;
+
+        // 杰弗瑞菜单：北征=0，北征两岐塔=1，南征=2。
+        var selection = config.LastSelectedMap == ExpeditionMap.North ? 0 : 2;
+        addon->FireCallbackInt(selection);
+        LogHelper.Chat(config.LastSelectedMap == ExpeditionMap.North
+            ? "已选择进入北征。"
+            : "已选择进入南征。");
+        ClearGoToCrescentIsle();
     }
 
     public void Dispose()
     {
         DalamudApi.Framework.Update -= OnFrameworkUpdate;
         DalamudApi.AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, "SelectYesno", OnSelectYesnoPostSetup);
+        DalamudApi.AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, "SelectString", OnSelectStringPostSetup);
         ClearPendingNavigation();
         ClearPendingTeleport();
         ClearPendingMove();
         ClearPendingReturnNavigation();
+        ClearRouteNavigation();
     }
 }

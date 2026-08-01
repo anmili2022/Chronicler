@@ -8,9 +8,9 @@ internal sealed class PluginUI : IDisposable
     private readonly MainWindow mainWindow;
     private readonly FloatingStatusWindow floatingStatusWindow;
 
-    public PluginUI(PluginConfiguration config, CrescentStateService state, VnavService vnav, CurrencyGainTracker currencyGainTracker)
+    public PluginUI(PluginConfiguration config, CrescentStateService state, VnavService vnav, CurrencyGainTracker currencyGainTracker, InstancePopulationProvider populationProvider)
     {
-        mainWindow = new MainWindow(config, state, vnav);
+        mainWindow = new MainWindow(config, state, vnav, populationProvider);
         floatingStatusWindow = new FloatingStatusWindow(config, ToggleMainWindow, vnav, currencyGainTracker);
         windowSystem.AddWindow(mainWindow);
         windowSystem.AddWindow(floatingStatusWindow);

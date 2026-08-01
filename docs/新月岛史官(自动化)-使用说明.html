@@ -9,8 +9,8 @@
       margin: 0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
       line-height: 1.65;
-      color: #d9e2ef;
-      background: #111827;
+      color: #ead9c0;
+      background: #19110b;
     }
     main {
       max-width: 920px;
@@ -18,7 +18,7 @@
       padding: 32px 20px 56px;
     }
     h1, h2 {
-      color: #f8fafc;
+      color: #fbf1e3;
       line-height: 1.25;
     }
     h1 {
@@ -28,27 +28,27 @@
     h2 {
       margin-top: 34px;
       padding-bottom: 8px;
-      border-bottom: 1px solid #334155;
+      border-bottom: 1px solid #4a3826;
       font-size: 22px;
     }
     p, li {
       font-size: 15px;
     }
     a {
-      color: #7dd3fc;
+      color: #f2b74b;
     }
     code {
       padding: 2px 5px;
       border-radius: 4px;
-      background: #1f2937;
-      color: #fde68a;
+      background: #2a1c10;
+      color: #f2b74b;
     }
     .card {
       margin: 18px 0;
       padding: 16px 18px;
-      border: 1px solid #334155;
+      border: 1px solid #4a3826;
       border-radius: 10px;
-      background: #172033;
+      background: #241a0f;
     }
     .grid {
       display: grid;
@@ -56,15 +56,15 @@
       gap: 14px;
     }
     .muted {
-      color: #94a3b8;
+      color: #b8a088;
     }
     .tag {
       display: inline-block;
       margin: 4px 6px 4px 0;
       padding: 3px 8px;
       border-radius: 999px;
-      background: #0f766e;
-      color: #ecfeff;
+      background: #3a2a18;
+      color: #ffe9c4;
       font-size: 13px;
     }
   </style>
@@ -72,7 +72,7 @@
 <body>
 <main>
   <h1>新月岛史官</h1>
-  <p class="muted">插件版本：<strong>v0.2.0.10+</strong></p>
+  <p class="muted">插件版本：<strong>v0.2.0.12+</strong></p>
   <p class="muted">本地记录新月岛南征/北征 CE 与 FATE 出现时间，支持 xyd 分享码、喊话同步、悬浮窗和自动导航。</p>
 
   <div class="card">
@@ -178,6 +178,29 @@
   <p>当前 CE/FATE 结束后，插件会停止当前导航，按延迟回营地，确认读图结束、地图正确、角色已在营地附近稳定后，等待 10 秒再扫描和前往下一个 CE/FATE。</p>
   <p>如果 CE/FATE 期间死亡，插件只会停止当前 vnav 导航；复活后不会立即回营地，等当前目标正常结束后再按结束流程回营地。</p>
   <p>CE 导航会在 CE 中心 15 码范围内随机选择一个可走坐标，而不是固定导航到圆心。部分目标会使用指定优先传送点，例如暴食咒鬼优先卡纳克城塞。</p>
+
+  <h3>自动进出岛</h3>
+  <ul>
+    <li>开启 <code>自动进出岛</code> 后，当前区域人数低于人数阈值，或任务剩余时间低于时间阈值（分钟）时，自动执行 <code>/pdr leaveduty</code>；DEBUG 页签中的任务时间显示为 <code>分:秒</code>。</li>
+    <li>任一阈值设置为 <code>0</code> 表示禁用该条件。</li>
+    <li>离岛后等待设置的延迟，自动前往入口；到达入口会寻找 NPC <code>杰弗瑞</code>，并自动选择南征或北征。</li>
+    <li>需要 PDR 已安装并加载；需要 vnavmesh 和 Lifestream 完成传送、入口导航。</li>
+  </ul>
+
+  <h3>多路线导航</h3>
+  <p>自动寻路页签底部 <code>路线</code> 折叠区可以为每个 Boss 录制 2~3 条路线（每条 ≥2 个航点），导航时随机选一条执行，适合悬崖、水域、大门等复杂地形。</p>
+  <ul>
+    <li>路线配置按 <code>CE 路线</code> / <code>FATE 路线</code> 分组；北征普通 FATE 位于 <code>FATE 路线</code> 分组。</li>
+    <li>选择 Boss 后，右侧 <code>标记</code> 按钮会按内置 Boss 坐标在游戏地图上放置 <code>&lt;flag&gt;</code>，方便录制路线前确认方向。</li>
+    <li><code>路线 1</code> / <code>路线 2</code> / <code>路线 3</code> 是路线切换按钮，括号内显示当前航点数量。</li>
+    <li>选择 Boss 后，每条路线可 <code>添加当前位置</code> 把角色当前位置追加为普通航点，<code>删除最后航点</code>、<code>清空路线</code> 可调整。</li>
+    <li>航点表操作列的 <code>导</code> 会从当前位置前往该航点；<code>强</code> 可在普通/强制之间切换；<code>更</code> 把该行坐标更正为当前坐标；<code>删</code> 删除该航点。</li>
+    <li>强制航点执行时不走寻路，会直接向坐标移动，适合需要从高处直接跳下去的位置。</li>
+    <li>改动即时保存；路线按"出发点 → 途经点 → 目标附近"顺序录制，首航点尽量靠近常用起点。</li>
+    <li>内置路线随插件版本分发，新用户无需设置；用户自定义路线会覆盖同名（同 Boss 同路线号）的内置路线。</li>
+    <li>没有路线时回退原有的单点导航。</li>
+  </ul>
+  <p>录制的路线可通过命令 <code>/shiguan route export</code> 生成内置代码并复制到剪贴板，便于开发者固化进 <code>RouteCatalog</code> 随版本发布；<code>/shiguan route clear</code> 清空全部自定义路线。</p>
 
   <h2>悬浮窗</h2>
   <ul>
