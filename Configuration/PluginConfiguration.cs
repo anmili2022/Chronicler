@@ -16,6 +16,8 @@ public sealed class PluginConfiguration : IPluginConfiguration
     public bool AutoDetectAppearances = true;
     public bool AutoNavigationEnabled = false;
     public bool AutoIslandRotationEnabled = false;
+    public bool AutoIslandLeaveByPlayerCount = true;
+    public bool AutoIslandLeaveByTime = true;
     public int AutoIslandLeavePlayerThreshold = 30;
     public int AutoIslandLeaveTimeThresholdMinutes = 160;
     public int AutoIslandLeaveTimeThresholdSeconds = 160;
@@ -68,6 +70,8 @@ public sealed class PluginConfiguration : IPluginConfiguration
             AutoIslandLeaveTimeThresholdMinutes = 160;
             AutoIslandReenterDelaySeconds = 20;
             AutoIslandTargetMap = ExpeditionMap.North;
+            AutoIslandLeaveByPlayerCount = true;
+            AutoIslandLeaveByTime = true;
             Version = 2;
             Save();
         }
@@ -75,6 +79,8 @@ public sealed class PluginConfiguration : IPluginConfiguration
         if (Version < 3)
         {
             AutoIslandLeaveTimeThresholdMinutes = 160;
+            AutoIslandLeaveByPlayerCount = true;
+            AutoIslandLeaveByTime = true;
             Version = 3;
             Save();
         }

@@ -69,7 +69,11 @@ internal sealed class VnavService : IDisposable
 
         DalamudApi.Framework.Update += OnFrameworkUpdate;
         DalamudApi.AddonLifecycle.RegisterListener(AddonEvent.PostSetup, "SelectYesno", OnSelectYesnoPostSetup);
+        DalamudApi.AddonLifecycle.RegisterListener(AddonEvent.PostDraw, "SelectYesno", OnSelectYesnoPostSetup);
         DalamudApi.AddonLifecycle.RegisterListener(AddonEvent.PostSetup, "SelectString", OnSelectStringPostSetup);
+        DalamudApi.AddonLifecycle.RegisterListener(AddonEvent.PostDraw, "SelectString", OnSelectStringPostSetup);
+        DalamudApi.AddonLifecycle.RegisterListener(AddonEvent.PostSetup, "ContentsFinderConfirm", OnContentsFinderConfirmPostSetup);
+        DalamudApi.AddonLifecycle.RegisterListener(AddonEvent.PostDraw, "ContentsFinderConfirm", OnContentsFinderConfirmPostSetup);
     }
 
     private void TryInitializeLifestream()
@@ -157,7 +161,7 @@ internal sealed class VnavService : IDisposable
     private bool pendingReturnNavigationSawBetweenAreas;
     private DateTime? pendingReturnNavigationConfirmedUtc;
 
-    private enum GoToCrescentStep { None, WaitingTuliyollal, WaitingOccultVillage, MovingToEntrance, WaitingEntranceMenu }
+    private enum GoToCrescentStep { None, WaitingTuliyollal, WaitingOccultVillage, MovingToEntrance, WaitingEntranceMenu, WaitingEnterConfirm, WaitingContentsFinderConfirm }
     private GoToCrescentStep goToCrescentStep;
     private DateTime goToCrescentStepStartedUtc;
     private DateTime goToCrescentMoveStartedUtc;
@@ -725,6 +729,16 @@ internal sealed class VnavService : IDisposable
 
             case GoToCrescentStep.WaitingEntranceMenu:
                 ProcessEntranceMenu();
+                break;
+
+            case GoToCrescentStep.WaitingEnterConfirm:
+            case GoToCrescentStep.WaitingContentsFinderConfirm:
+                if (now - goToCrescentStepStartedUtc > TimeSpan.FromSeconds(45))
+                {
+                    ClearGoToCrescentIsle();
+                    LogHelper.Chat("等待进岛确认超时，已取消自动进岛。");
+                }
+
                 break;
         }
     }
@@ -1511,9 +1525,14 @@ internal sealed class VnavService : IDisposable
     private unsafe void OnSelectYesnoPostSetup(AddonEvent type, AddonArgs args)
     {
         _ = type;
-        if (!pendingReturnConfirm || DateTime.UtcNow - pendingReturnConfirmStartedUtc > TimeSpan.FromSeconds(8))
-        {
+        var isReturnConfirm = pendingReturnConfirm && DateTime.UtcNow - pendingReturnConfirmStartedUtc <= TimeSpan.FromSeconds(8);
+        var isEnterConfirm = goToCrescentStep == GoToCrescentStep.WaitingEnterConfirm
+                             && DateTime.UtcNow - goToCrescentStepStartedUtc <= TimeSpan.FromSeconds(45);
+        if (pendingReturnConfirm && !isReturnConfirm)
             pendingReturnConfirm = false;
+
+        if (!isReturnConfirm && !isEnterConfirm)
+        {
             return;
         }
 
@@ -1521,25 +1540,43 @@ internal sealed class VnavService : IDisposable
         if (addon == null || !addon->IsVisible)
             return;
 
-        pendingReturnConfirm = false;
+        if (isReturnConfirm)
+            pendingReturnConfirm = false;
         addon->FireCallbackInt(0);
-        if (pendingReturnNavigationTarget.HasValue)
+        if (isReturnConfirm && pendingReturnNavigationTarget.HasValue)
             pendingReturnNavigationConfirmedUtc = DateTime.UtcNow;
-        if (pendingTeleportTarget.HasValue)
+        if (isReturnConfirm && pendingTeleportTarget.HasValue)
             pendingTeleportReturnConfirmedUtc = DateTime.UtcNow;
+        if (isEnterConfirm)
+        {
+            goToCrescentStep = GoToCrescentStep.WaitingContentsFinderConfirm;
+            goToCrescentStepStartedUtc = DateTime.UtcNow;
+            LogHelper.Chat("已确认进入新月岛，等待出发确认。");
+            return;
+        }
+
         DebugChat("导航调试: 已确认回营地。");
     }
 
     private unsafe void OnSelectStringPostSetup(AddonEvent type, AddonArgs args)
     {
         _ = type;
-        if (goToCrescentStep != GoToCrescentStep.WaitingEntranceMenu
-            || DateTime.UtcNow - goToCrescentStepStartedUtc > TimeSpan.FromSeconds(30))
+        if (goToCrescentStep is not GoToCrescentStep.WaitingEntranceMenu and not GoToCrescentStep.WaitingEnterConfirm
+            || DateTime.UtcNow - goToCrescentStepStartedUtc > TimeSpan.FromSeconds(45))
             return;
 
         var addon = (AtkUnitBase*)args.Addon.Address;
         if (addon == null || !addon->IsVisible)
             return;
+
+        if (goToCrescentStep == GoToCrescentStep.WaitingEnterConfirm)
+        {
+            addon->FireCallbackInt(0);
+            goToCrescentStep = GoToCrescentStep.WaitingContentsFinderConfirm;
+            goToCrescentStepStartedUtc = DateTime.UtcNow;
+            LogHelper.Chat("已确认进入新月岛，等待出发确认。");
+            return;
+        }
 
         // 杰弗瑞菜单：北征=0，北征两岐塔=1，南征=2。
         var selection = config.LastSelectedMap == ExpeditionMap.North ? 0 : 2;
@@ -1547,6 +1584,24 @@ internal sealed class VnavService : IDisposable
         LogHelper.Chat(config.LastSelectedMap == ExpeditionMap.North
             ? "已选择进入北征。"
             : "已选择进入南征。");
+        goToCrescentStep = GoToCrescentStep.WaitingEnterConfirm;
+        goToCrescentStepStartedUtc = DateTime.UtcNow;
+    }
+
+    private unsafe void OnContentsFinderConfirmPostSetup(AddonEvent type, AddonArgs args)
+    {
+        _ = type;
+        if (goToCrescentStep is not GoToCrescentStep.WaitingEnterConfirm and not GoToCrescentStep.WaitingContentsFinderConfirm
+            || DateTime.UtcNow - goToCrescentStepStartedUtc > TimeSpan.FromSeconds(45))
+            return;
+
+        var addon = (AtkUnitBase*)args.Addon.Address;
+        if (addon == null || !addon->IsVisible)
+            return;
+
+        addon->FireCallbackInt(8);
+
+        LogHelper.Chat("已点击出发，等待进入新月岛。");
         ClearGoToCrescentIsle();
     }
 
@@ -1554,7 +1609,11 @@ internal sealed class VnavService : IDisposable
     {
         DalamudApi.Framework.Update -= OnFrameworkUpdate;
         DalamudApi.AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, "SelectYesno", OnSelectYesnoPostSetup);
+        DalamudApi.AddonLifecycle.UnregisterListener(AddonEvent.PostDraw, "SelectYesno", OnSelectYesnoPostSetup);
         DalamudApi.AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, "SelectString", OnSelectStringPostSetup);
+        DalamudApi.AddonLifecycle.UnregisterListener(AddonEvent.PostDraw, "SelectString", OnSelectStringPostSetup);
+        DalamudApi.AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, "ContentsFinderConfirm", OnContentsFinderConfirmPostSetup);
+        DalamudApi.AddonLifecycle.UnregisterListener(AddonEvent.PostDraw, "ContentsFinderConfirm", OnContentsFinderConfirmPostSetup);
         ClearPendingNavigation();
         ClearPendingTeleport();
         ClearPendingMove();

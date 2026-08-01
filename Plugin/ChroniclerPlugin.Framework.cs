@@ -17,7 +17,7 @@ public sealed partial class ChroniclerPlugin
         {
             var currentMap = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, Configuration);
 
-            if (currentMap.HasValue && Configuration.AutoIslandLeavePlayerThreshold > 0)
+            if (currentMap.HasValue && Configuration.AutoIslandLeaveByPlayerCount && Configuration.AutoIslandLeavePlayerThreshold > 0)
                 instancePopulationProvider.Update(DateTime.UtcNow, Configuration.AutoIslandLeavePlayerThreshold);
 
             ProcessStandbyNavigation();
@@ -96,12 +96,15 @@ public sealed partial class ChroniclerPlugin
             return true;
 
         var playerCount = instancePopulationProvider.CurrentPopulation;
-        var leaveByPlayers = Configuration.AutoIslandLeavePlayerThreshold > 0
+        var leaveByPlayers = Configuration.AutoIslandLeaveByPlayerCount
+                             && Configuration.AutoIslandLeavePlayerThreshold > 0
                              && instancePopulationProvider.IsConfirmedBelow(Configuration.AutoIslandLeavePlayerThreshold);
 
         var leaveByTime = false;
         var content = PublicContentOccultCrescent.GetInstance();
-        if (content != null && Configuration.AutoIslandLeaveTimeThresholdMinutes > 0)
+        if (Configuration.AutoIslandLeaveByTime
+            && content != null
+            && Configuration.AutoIslandLeaveTimeThresholdMinutes > 0)
         {
             var timeLeft = content->ContentTimeLeft;
             var thresholdSeconds = Configuration.AutoIslandLeaveTimeThresholdMinutes * 60f;
@@ -111,9 +114,12 @@ public sealed partial class ChroniclerPlugin
         if (!leaveByPlayers && !leaveByTime)
             return false;
 
-        var reason = leaveByPlayers
-            ? $"人数 {playerCount}<{Configuration.AutoIslandLeavePlayerThreshold}"
-            : $"任务剩余 {FormatMinutesSeconds(content->ContentTimeLeft)}<{Configuration.AutoIslandLeaveTimeThresholdMinutes} 分钟";
+        var remainingTimeText = content != null ? FormatMinutesSeconds(content->ContentTimeLeft) : "--:--";
+        var reason = leaveByPlayers && leaveByTime
+            ? $"人数 {playerCount}<{Configuration.AutoIslandLeavePlayerThreshold} 且 任务剩余 {remainingTimeText}<{Configuration.AutoIslandLeaveTimeThresholdMinutes} 分钟"
+            : leaveByPlayers
+                ? $"人数 {playerCount}<{Configuration.AutoIslandLeavePlayerThreshold}"
+                : $"任务剩余 {remainingTimeText}<{Configuration.AutoIslandLeaveTimeThresholdMinutes} 分钟";
         vnav.Stop();        if (!DalamudApi.Commands.ProcessCommand("/pdr leaveduty"))
         {
             LogHelper.Chat("自动进出岛: 未找到 /pdr leaveduty 命令，请确认 PDR 已安装并加载。");

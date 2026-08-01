@@ -51,9 +51,13 @@ internal sealed class FloatingStatusWindow : Window
         if (config.AutoNavigationEnabled)
         {
             ImGui.SameLine();
-            ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.35f, 1f, 0.45f, 1f));
-            ImGui.TextUnformatted("全自动中");
-            ImGui.PopStyleColor();
+            DrawStatusBadge("自动", new Vector4(0.22f, 0.45f, 0.28f, 1f), new Vector4(0.45f, 1f, 0.58f, 1f));
+
+            if (config.AutoIslandRotationEnabled)
+            {
+                ImGui.SameLine();
+                DrawStatusBadge("自动进出", new Vector4(0.16f, 0.32f, 0.5f, 1f), new Vector4(0.6f, 0.82f, 1f, 1f));
+            }
         }
 
         if (collapsed)
@@ -68,7 +72,7 @@ internal sealed class FloatingStatusWindow : Window
         if (!drewAny)
         {
             ImGui.PushStyleColor(ImGuiCol.Text, Yellow);
-            ImGui.TextUnformatted("当前无 FATE/CE");
+            ImGui.TextUnformatted("当前无新月岛史官目标");
             ImGui.PopStyleColor();
         }
 
@@ -133,7 +137,8 @@ internal sealed class FloatingStatusWindow : Window
     private bool DrawHeader()
     {
         ImGui.PushStyleColor(ImGuiCol.Text, Yellow);
-        ImGui.TextUnformatted("FATE / CE");
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextUnformatted("新月岛史官");
         ImGui.PopStyleColor();
 
         var clicked = ImGui.IsItemClicked(ImGuiMouseButton.Left);
@@ -144,6 +149,20 @@ internal sealed class FloatingStatusWindow : Window
 
     private static string FormatMapName(ExpeditionMap map)
         => map == ExpeditionMap.South ? "南征" : "北征";
+
+    private static void DrawStatusBadge(string label, Vector4 background, Vector4 textColor)
+    {
+        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 8f);
+        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(8f, 3f));
+        ImGui.PushStyleColor(ImGuiCol.Button, background);
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, background);
+        ImGui.PushStyleColor(ImGuiCol.ButtonActive, background);
+        ImGui.PushStyleColor(ImGuiCol.Border, new Vector4(0f, 0f, 0f, 0f));
+        ImGui.PushStyleColor(ImGuiCol.Text, textColor);
+        ImGui.Button(label);
+        ImGui.PopStyleColor(5);
+        ImGui.PopStyleVar(2);
+    }
 
     private static void DrawDropMark(string drop)
     {

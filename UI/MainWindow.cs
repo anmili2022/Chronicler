@@ -143,7 +143,7 @@ internal sealed class MainWindow : Window
         }
 
         var showFloating = config.ShowFloatingStatusWindow;
-        if (ImGui.Checkbox("显示 FATE/CE 悬浮窗", ref showFloating))
+        if (ImGui.Checkbox("显示新月岛史官悬浮窗", ref showFloating))
         {
             config.ShowFloatingStatusWindow = showFloating;
             config.Save();
@@ -177,7 +177,7 @@ internal sealed class MainWindow : Window
             config.Save();
         }
 
-        if (ImGui.Button("显示当前位置/CE/FATE距离"))
+        if (ImGui.Button("显示当前位置/新月岛史官目标距离"))
             UpdateDistanceDebugLines();
 
         ImGui.SameLine();
@@ -239,7 +239,7 @@ internal sealed class MainWindow : Window
         var targets = fates.Concat(ces).OrderBy(item => item.Distance).ToArray();
         if (targets.Length == 0)
         {
-            distanceDebugLines.Add("当前没有活动 FATE/CE。");
+            distanceDebugLines.Add("当前没有活动新月岛史官目标。");
             return;
         }
 
@@ -432,6 +432,23 @@ internal sealed class MainWindow : Window
             ImGui.TextDisabled("玩家距目标 + 阈值 > 目标最近水晶距目标 时先回营地再传送");
         }
 
+        var leaveByPlayers = config.AutoIslandLeaveByPlayerCount;
+        if (ImGui.Checkbox("人数满足时离岛", ref leaveByPlayers))
+        {
+            config.AutoIslandLeaveByPlayerCount = leaveByPlayers;
+            config.Save();
+        }
+
+        ImGui.SameLine();
+        var leaveByTime = config.AutoIslandLeaveByTime;
+        if (ImGui.Checkbox("时间满足时离岛", ref leaveByTime))
+        {
+            config.AutoIslandLeaveByTime = leaveByTime;
+            config.Save();
+        }
+
+        ImGui.TextDisabled("两项可单选也可同时勾选；至少勾选一项才会自动离岛");
+
         DrawAutoIslandRotationSettings();
 
         if (!resolvedMap.HasValue)
@@ -560,7 +577,7 @@ internal sealed class MainWindow : Window
 
     private void DrawRouteConfig(ExpeditionMap map)
     {
-        ImGui.TextUnformatted("为每个 CE/FATE 录制 2~3 条路线（≥2 个航点），导航时随机选一条。内置路线随版本分发，新用户无需设置。");
+        ImGui.TextUnformatted("为每个新月岛史官目标录制 2~3 条路线（>=2 个航点），导航时随机选一条。内置路线随版本分发，新用户无需设置。");
         ImGui.Spacing();
 
         if (ImGui.CollapsingHeader("CE 路线##route_ce_config", ImGuiTreeNodeFlags.DefaultOpen))
@@ -1331,11 +1348,11 @@ internal sealed class MainWindow : Window
 
     private void DrawFateDebug(ExpeditionMap map)
     {
-        if (!ImGui.CollapsingHeader("FATE/CE 调试区"))
+        if (!ImGui.CollapsingHeader("新月岛史官调试区"))
             return;
 
         ImGui.TextUnformatted($"当前 FateTable.Length: {DalamudApi.FateTable.Length}");
-        ImGui.TextDisabled("用于进图后确认 CE/FATE 的 FateId、名称和状态。把这里的数据反馈回来后，可写入 BossCatalog 做稳定匹配。");
+        ImGui.TextDisabled("用于进图后确认新月岛史官目标的 FateId、名称和状态。把这里的数据反馈回来后，可写入 BossCatalog 做稳定匹配。");
 
         if (ImGui.Button("输出当前 FATE 到聊天"))
             PrintCurrentFatesToChat();
