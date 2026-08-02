@@ -79,6 +79,7 @@
 - 悬浮窗提供单个 `待命点` 按钮，点击即记录或更新当前位置，tooltip 为“记录、更新待命点”。
 - 手动点击悬浮窗 `回营地` 时，如果已设置待命点，会在回营地完成后前往待命点。
 - 待命点回转不会抢占正在进行的自动新月岛史官目标导航；新的自动目标开始时会清理待命点延迟任务。
+- 自动目标结束时，会先按“结束后回营地延迟”等待，再执行亚返回；回营地后需确认读图完成、营地附近稳定 2 秒，并至少等待 8 秒才前往待命点。任意阶段出现新的可导航 CE/FATE 时，新目标优先，待命点回转会被取消。
 
 ## 依赖与限制
 
@@ -199,8 +200,8 @@ bool routeDismountOnArrival;
 
 1. 从 `RouteCatalog.GetRoutes` 取该 Boss 的有效路线（Points 数 >= 2），随机选一条。
 2. 无有效路线 → 回退现有 `NavigateTo` / `NavigateToRandomInRadius`。
-3. 逐点执行：普通航点先 `SnapToNavmesh` 吸附（吸附偏差 > 8f 视为无网格，跳点），再由 `NavigateToInternal` 前往；强制航点直接调用 `Path.MoveTo`。首个普通航点按最终 Boss 目标完成传送判断和传送点选择，传送后再继续前往该航点；`OnFrameworkUpdate` 每 500ms 轮询。
-4. 到达判定：`HorizontalDistance(player, 当前航点) <= 4f`，到达后 `AdvanceRoutePoint` 推进下一航点。
+3. 逐点执行：普通航点先 `SnapToNavmesh` 吸附（吸附偏差 > 8f 视为无网格，跳点），再由 `NavigateToInternal` 前往；强制航点直接调用 `Path.MoveTo`。首个普通航点按最终 Boss 目标完成传送判断和传送点选择，传送后再继续前往该航点；`OnFrameworkUpdate` 每 100ms 轮询。
+4. 到达判定：普通航点 `HorizontalDistance(player, 当前航点) <= 8f` 时提前衔接下一航点，减少停顿；强制航点保持 `<= 4f`，到达后 `AdvanceRoutePoint` 推进下一航点。路线状态每 100ms 检查一次。
 5. 卡住重试：当前航点超过 7 秒水平位移 < 2.5f → 重试当前点，最多 3 次；仍失败 → 放弃路线，直接导航到最终目标。
 6. 全部航点走完后，CE 目标用 `NavigateToRandomInRadius`，普通目标用 `NavigateTo`。
 7. 清空导航 `vnav.Stop()` / 新 `NavigateTo` 都会清路线状态机。

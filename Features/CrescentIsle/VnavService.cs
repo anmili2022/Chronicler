@@ -347,7 +347,7 @@ internal sealed class VnavService : IDisposable
         routeRandomRadius = randomRadius;
         routePreferredShardId = preferredShardId;
         routeDismountOnArrival = dismountOnArrival;
-        LogHelper.Chat($"路线导航: 使用 {chosen.RouteIndex + 1} 号路线，共 {routePoints.Length} 个航点。");
+        RouteDebugChat($"使用 {chosen.RouteIndex + 1} 号路线，共 {routePoints.Length} 个航点。");
         StartRoutePoint();
     }
 
@@ -359,7 +359,7 @@ internal sealed class VnavService : IDisposable
         {
             routePointStartedUtc = DateTime.UtcNow;
             routeLastPosition = DalamudApi.ObjectTable.LocalPlayer?.Position ?? target;
-            LogHelper.Chat($"路线导航: 强制前往航点 {routePointIndex + 1}/{routePoints.Length} ({target.X:F1}, {target.Y:F1}, {target.Z:F1})");
+            RouteDebugChat($"强制前往航点 {routePointIndex + 1}/{routePoints.Length} ({target.X:F1}, {target.Y:F1}, {target.Z:F1})");
             StartForcedMove(target);
             return;
         }
@@ -367,14 +367,14 @@ internal sealed class VnavService : IDisposable
         var snapped = SnapToNavmesh(target);
         if (Vector3.Distance(snapped, target) > 8f)
         {
-            LogHelper.Chat($"路线导航: 航点 {routePointIndex + 1} 附近无网格，跳过。");
+            RouteDebugChat($"航点 {routePointIndex + 1} 附近无网格，跳过。");
             AdvanceRoutePoint();
             return;
         }
 
         routePointStartedUtc = DateTime.UtcNow;
         routeLastPosition = DalamudApi.ObjectTable.LocalPlayer?.Position ?? target;
-        LogHelper.Chat($"路线导航: 前往航点 {routePointIndex + 1}/{routePoints.Length} ({snapped.X:F1}, {snapped.Y:F1}, {snapped.Z:F1})");
+        RouteDebugChat($"前往航点 {routePointIndex + 1}/{routePoints.Length} ({snapped.X:F1}, {snapped.Y:F1}, {snapped.Z:F1})");
         Vector3? teleportSelectionTarget = routePointIndex == 0 ? routeFinalTarget : null;
         NavigateToInternal(snapped, false, routePreferredShardId, false, clearRouteNavigation: false, teleportSelectionTarget: teleportSelectionTarget);
     }
@@ -384,7 +384,7 @@ internal sealed class VnavService : IDisposable
         routePointIndex++;
         if (routePointIndex >= routePoints!.Length)
         {
-            LogHelper.Chat("路线导航: 全部航点已走完，前往目标。");
+            RouteDebugChat("全部航点已走完，前往目标。");
             var finalTarget = routeFinalTarget;
             var radius = routeRandomRadius;
             var preferred = routePreferredShardId;
@@ -406,7 +406,7 @@ internal sealed class VnavService : IDisposable
             return;
 
         var now = DateTime.UtcNow;
-        if (now - lastRouteCheckUtc < TimeSpan.FromMilliseconds(500))
+        if (now - lastRouteCheckUtc < TimeSpan.FromMilliseconds(100))
             return;
 
         lastRouteCheckUtc = now;
@@ -417,10 +417,12 @@ internal sealed class VnavService : IDisposable
         if (!playerPos.HasValue)
             return;
 
-        var current = routePoints[routePointIndex].ToVector3();
-        if (HorizontalDistance(playerPos.Value, current) <= 4f)
+        var point = routePoints[routePointIndex];
+        var current = point.ToVector3();
+        var arrivalDistance = point.Kind == BossRoutePointKind.Forced ? 4f : 8f;
+        if (HorizontalDistance(playerPos.Value, current) <= arrivalDistance)
         {
-            LogHelper.Chat($"路线导航: 到达航点 {routePointIndex + 1}/{routePoints.Length}。");
+            RouteDebugChat($"到达航点 {routePointIndex + 1}/{routePoints.Length}。");
             AdvanceRoutePoint();
             return;
         }
@@ -451,7 +453,7 @@ internal sealed class VnavService : IDisposable
         }
 
         routeStuckRetryCount++;
-        LogHelper.Chat($"路线导航: 航点未移动，重试 {routeStuckRetryCount}/3。");
+        RouteDebugChat($"航点未移动，重试 {routeStuckRetryCount}/3。");
         StartRoutePoint();
     }
 
@@ -1199,6 +1201,12 @@ internal sealed class VnavService : IDisposable
     {
         if (config.ShowNavigationDebug)
             LogHelper.Chat(message);
+    }
+
+    private void RouteDebugChat(string message)
+    {
+        if (config.ShowRouteNavigationDebug)
+            LogHelper.Chat($"路线导航: {message}");
     }
 
     private void StartMove(Vector3 target, bool fly)

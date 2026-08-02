@@ -42,6 +42,7 @@ public sealed class PluginConfiguration : IPluginConfiguration
     public List<uint> DisabledAutoCeIds = new();
     public bool ShowDebugSections = false;
     public bool ShowNavigationDebug = false;
+    public bool ShowRouteNavigationDebug = false;
     public bool ShowAutoNavigationStatusMessages = true;
     public bool ShowFloatingStatusWindow = true;
     public bool LockFloatingStatusWindow = false;

@@ -145,6 +145,14 @@ internal sealed class MainWindow : Window
             config.Save();
         }
 
+        ImGui.SameLine();
+        var showRouteNavigationDebug = config.ShowRouteNavigationDebug;
+        if (ImGui.Checkbox("路线导航调试", ref showRouteNavigationDebug))
+        {
+            config.ShowRouteNavigationDebug = showRouteNavigationDebug;
+            config.Save();
+        }
+
         var showFloating = config.ShowFloatingStatusWindow;
         if (ImGui.Checkbox("显示新月岛史官悬浮窗", ref showFloating))
         {
