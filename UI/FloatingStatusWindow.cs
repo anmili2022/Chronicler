@@ -98,7 +98,6 @@ internal sealed class FloatingStatusWindow : Window
             if (ImGui.SmallButton(config.AutoNavigationEnabled ? "全自动: 开" : "全自动: 关"))
             {
                 config.AutoNavigationEnabled = !config.AutoNavigationEnabled;
-                config.Save();
                 LogHelper.Chat(config.AutoNavigationEnabled ? "全自动模式已开启。" : "全自动模式已关闭。");
             }
             if (ImGui.IsItemHovered())

@@ -14,7 +14,9 @@ public sealed class PluginConfiguration : IPluginConfiguration
     public bool Enabled = true;
     public bool ListenChat = true;
     public bool AutoDetectAppearances = true;
+    [NonSerialized]
     public bool AutoNavigationEnabled = false;
+    [NonSerialized]
     public bool AutoIslandRotationEnabled = false;
     public bool AutoIslandLeaveByPlayerCount = true;
     public bool AutoIslandLeaveByTime = true;
@@ -64,6 +66,9 @@ public sealed class PluginConfiguration : IPluginConfiguration
     public void Initialize(IDalamudPluginInterface pluginInterface)
     {
         this.pluginInterface = pluginInterface;
+        AutoNavigationEnabled = false;
+        AutoIslandRotationEnabled = false;
+
         if (Version < 2)
         {
             AutoIslandLeavePlayerThreshold = 30;

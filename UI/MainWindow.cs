@@ -364,7 +364,6 @@ internal sealed class MainWindow : Window
         if (ImGui.Checkbox("全自动模式", ref autoNavigationEnabled))
         {
             config.AutoNavigationEnabled = autoNavigationEnabled;
-            config.Save();
         }
 
         ImGui.SameLine();
@@ -432,23 +431,6 @@ internal sealed class MainWindow : Window
             ImGui.TextDisabled("玩家距目标 + 阈值 > 目标最近水晶距目标 时先回营地再传送");
         }
 
-        var leaveByPlayers = config.AutoIslandLeaveByPlayerCount;
-        if (ImGui.Checkbox("人数满足时离岛", ref leaveByPlayers))
-        {
-            config.AutoIslandLeaveByPlayerCount = leaveByPlayers;
-            config.Save();
-        }
-
-        ImGui.SameLine();
-        var leaveByTime = config.AutoIslandLeaveByTime;
-        if (ImGui.Checkbox("时间满足时离岛", ref leaveByTime))
-        {
-            config.AutoIslandLeaveByTime = leaveByTime;
-            config.Save();
-        }
-
-        ImGui.TextDisabled("两项可单选也可同时勾选；至少勾选一项才会自动离岛");
-
         DrawAutoIslandRotationSettings();
 
         if (!resolvedMap.HasValue)
@@ -512,11 +494,24 @@ internal sealed class MainWindow : Window
         if (ImGui.Checkbox("启用自动进出岛", ref enabled))
         {
             config.AutoIslandRotationEnabled = enabled;
+        }
+
+        var leaveByPlayers = config.AutoIslandLeaveByPlayerCount;
+        if (ImGui.Checkbox("人数满足时离岛", ref leaveByPlayers))
+        {
+            config.AutoIslandLeaveByPlayerCount = leaveByPlayers;
             config.Save();
         }
 
         ImGui.SameLine();
-        ImGui.TextDisabled("阈值为 0 时禁用对应条件");
+        var leaveByTime = config.AutoIslandLeaveByTime;
+        if (ImGui.Checkbox("时间满足时离岛", ref leaveByTime))
+        {
+            config.AutoIslandLeaveByTime = leaveByTime;
+            config.Save();
+        }
+
+        ImGui.TextDisabled("两项可单选也可同时勾选；至少勾选一项才会自动离岛。阈值为 0 时禁用对应条件");
 
         if (ImGui.BeginTable("##auto_island_rotation_settings", 4, ImGuiTableFlags.SizingStretchProp))
         {

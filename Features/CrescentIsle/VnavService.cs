@@ -218,7 +218,7 @@ internal sealed class VnavService : IDisposable
     public unsafe void NavigateTo(Vector3 dest, bool fly = false, uint? preferredShardId = null, bool dismountOnArrival = false)
         => NavigateToInternal(dest, fly, preferredShardId, dismountOnArrival, clearRouteNavigation: true);
 
-    private unsafe void NavigateToInternal(Vector3 dest, bool fly, uint? preferredShardId, bool dismountOnArrival, bool clearRouteNavigation)
+    private unsafe void NavigateToInternal(Vector3 dest, bool fly, uint? preferredShardId, bool dismountOnArrival, bool clearRouteNavigation, Vector3? teleportSelectionTarget = null)
     {
         ClearPendingNavigation();
         if (clearRouteNavigation)
@@ -237,7 +237,8 @@ internal sealed class VnavService : IDisposable
             if (aethernetTeleportById != null || aethernetTeleportByPlaceNameId != null)
             {
                 var playerPos = DalamudApi.ObjectTable.LocalPlayer?.Position;
-                if (playerPos.HasValue && ShouldTeleportToTarget(target, preferredShardId))
+                var teleportTarget = teleportSelectionTarget ?? target;
+                if (playerPos.HasValue && ShouldTeleportToTarget(teleportTarget, preferredShardId))
                 {
                     var currentMap = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, config);
                     if (!currentMap.HasValue)
@@ -247,17 +248,19 @@ internal sealed class VnavService : IDisposable
                     }
 
                     var map = currentMap.Value;
-                    var nearest = preferredShardId.HasValue ? FindShardById(map, preferredShardId.Value) : FindNearestShard(map, target);
-                    nearest ??= FindNearestShard(map, target);
+                    var nearest = preferredShardId.HasValue ? FindShardById(map, preferredShardId.Value) : FindNearestShard(map, teleportTarget);
+                    nearest ??= FindNearestShard(map, teleportTarget);
                     if (nearest.HasValue && nearest.Value.Id != 0)
                     {
-                        var playerToTarget = Vector3.Distance(playerPos.Value, target);
-                        var targetDistToShard = Vector3.Distance(target, nearest.Value.Pos);
+                        var playerToTarget = Vector3.Distance(playerPos.Value, teleportTarget);
+                        var targetDistToShard = Vector3.Distance(teleportTarget, nearest.Value.Pos);
                         DebugChat($"导航调试: 地图={map} 玩家距目标={playerToTarget:F1} 目标传送点 ID={nearest.Value.Id} 目标最近的水晶距目标={targetDistToShard:F1}");
                         var camp = GetCampShard(map);
                         if (camp.HasValue)
                         {
-                            StartMoveThenTeleport(camp.Value.Pos, nearest.Value.Id, nearest.Value.IsPlaceNameId, target, fly);
+                            var nearbySource = FindNearestShardWithin(map, playerPos.Value, 40f);
+                            var source = nearbySource ?? camp.Value;
+                            StartMoveThenTeleport(source.Pos, nearest.Value.Id, nearest.Value.IsPlaceNameId, target, fly, nearbySource.HasValue);
                             return;
                         }
                     }
@@ -353,7 +356,8 @@ internal sealed class VnavService : IDisposable
         routePointStartedUtc = DateTime.UtcNow;
         routeLastPosition = DalamudApi.ObjectTable.LocalPlayer?.Position ?? target;
         LogHelper.Chat($"路线导航: 前往航点 {routePointIndex + 1}/{routePoints.Length} ({snapped.X:F1}, {snapped.Y:F1}, {snapped.Z:F1})");
-        NavigateToInternal(snapped, false, routePreferredShardId, false, clearRouteNavigation: false);
+        Vector3? teleportSelectionTarget = routePointIndex == 0 ? routeFinalTarget : null;
+        NavigateToInternal(snapped, false, routePreferredShardId, false, clearRouteNavigation: false, teleportSelectionTarget: teleportSelectionTarget);
     }
 
     private void AdvanceRoutePoint()
@@ -986,7 +990,7 @@ internal sealed class VnavService : IDisposable
 
     private void ClearPendingNavigation() => pendingTarget = null;
 
-    private unsafe void StartMoveThenTeleport(Vector3 sourcePos, uint destinationId, bool destinationIsPlaceNameId, Vector3 target, bool fly)
+    private unsafe void StartMoveThenTeleport(Vector3 sourcePos, uint destinationId, bool destinationIsPlaceNameId, Vector3 target, bool fly, bool useNearbySource)
     {
         pendingTeleportTarget = target;
         pendingTeleportFly = fly;
@@ -1000,13 +1004,13 @@ internal sealed class VnavService : IDisposable
         pendingTeleportWalkingToSource = false;
         lastTeleportCheckUtc = DateTime.MinValue;
         lastTeleportDebugUtc = DateTime.MinValue;
-        DebugChat("导航调试: 先回营地，再 Lifestream 传送。");
+        DebugChat(useNearbySource
+            ? "导航调试: 40 码内有传送水晶，直接前往水晶后传送。"
+            : "导航调试: 附近无传送水晶，先回营地再传送。");
 
-        var playerPos = DalamudApi.ObjectTable.LocalPlayer?.Position;
-        if (playerPos.HasValue && HorizontalDistance(playerPos.Value, sourcePos) <= 80f)
+        if (useNearbySource)
         {
             pendingTeleportSawBetweenAreas = true;
-            DebugChat("导航调试: 已在营地，直接前往营地大水晶。");
             return;
         }
 
@@ -1074,7 +1078,7 @@ internal sealed class VnavService : IDisposable
             if (!pendingTeleportWalkingToSource)
             {
                 pendingTeleportWalkingToSource = true;
-                DebugChat("导航调试: 已回营地，前往营地大水晶。");
+                DebugChat("导航调试: 前往传送水晶。");
                 StartPathfind(pendingTeleportSourcePos, false);
             }
 
@@ -1088,7 +1092,7 @@ internal sealed class VnavService : IDisposable
             return;
 
         if (activeAethernetId == 0)
-            DebugChat("导航调试: 已到营地大水晶附近但未检测到 active，尝试 Lifestream 传送。");
+            DebugChat("导航调试: 已到传送水晶附近但未检测到 active，尝试 Lifestream 传送。");
 
         try { stop.InvokeAction(); } catch { }
         var finalTarget = pendingTeleportTarget.Value;
@@ -1278,6 +1282,15 @@ internal sealed class VnavService : IDisposable
             }
         }
         return best;
+    }
+
+    private static (Vector3 Pos, uint Id, bool IsPlaceNameId)? FindNearestShardWithin(ExpeditionMap map, Vector3 pos, float maxDistance)
+    {
+        return Shards
+            .Where(shard => shard.Map == map && HorizontalDistance(pos, shard.Pos) <= maxDistance)
+            .OrderBy(shard => HorizontalDistance(pos, shard.Pos))
+            .Select(shard => ((Vector3 Pos, uint Id, bool IsPlaceNameId)?)(shard.Pos, shard.Id, shard.IsPlaceNameId))
+            .FirstOrDefault();
     }
 
     private static (Vector3 Pos, uint Id, bool IsPlaceNameId)? FindShardById(ExpeditionMap map, uint id)
