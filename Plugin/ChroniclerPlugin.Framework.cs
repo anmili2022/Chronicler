@@ -423,7 +423,7 @@ public sealed partial class ChroniclerPlugin
             if (activeAutoNavigationKey != key && ShouldSkipAutoTarget(ev.State == DynamicEventState.Battle, ev.Progress))
                 continue;
 
-            NavigateAutoTargetOnce(key, $"CE {boss.Abbreviation}", ev.MapMarker.Position, VnavService.GetPreferredShardIdForCriticalEncounter(map, boss.Index), ev.MapMarker.Radius, boss: boss);
+            NavigateAutoTargetOnce(key, $"CE {boss.Abbreviation}", ev.MapMarker.Position, VnavService.GetPreferredShardIdForCriticalEncounter(map, boss.Index), ev.MapMarker.Radius, dismountOnArrival: VnavService.RollCriticalEncounterDismount(), boss: boss);
             return true;
         }
 

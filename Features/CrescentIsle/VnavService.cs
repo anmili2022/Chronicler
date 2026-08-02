@@ -215,6 +215,9 @@ internal sealed class VnavService : IDisposable
     public static uint? GetPreferredShardIdForCriticalEncounter(ExpeditionMap map, int bossIndex)
         => map == ExpeditionMap.North && bossIndex == 3 ? 69420406u : null;
 
+    public static bool RollCriticalEncounterDismount()
+        => Random.Shared.Next(2) == 0;
+
     public unsafe void NavigateTo(Vector3 dest, bool fly = false, uint? preferredShardId = null, bool dismountOnArrival = false)
         => NavigateToInternal(dest, fly, preferredShardId, dismountOnArrival, clearRouteNavigation: true);
 

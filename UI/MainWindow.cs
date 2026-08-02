@@ -104,6 +104,9 @@ internal sealed class MainWindow : Window
         ImGui.SameLine();
         if (ImGui.Button("新月岛：北征之章 信息整理"))
             OpenUrl("https://bbs.nga.cn/read.php?tid=47269383");
+        ImGui.SameLine();
+        if (ImGui.Button("反馈问题"))
+            OpenUrl("https://discord.com/channels/1258981591124938762/1533032549549477998");
 
         if (!string.IsNullOrWhiteSpace(statusText))
             ImGui.TextDisabled(statusText);
@@ -870,7 +873,8 @@ internal sealed class MainWindow : Window
             ? VnavService.GetPreferredShardIdForCriticalEncounter(boss.Map, boss.Index)
             : boss.FateId.HasValue ? VnavService.GetPreferredShardIdForFate(boss.FateId.Value) : null;
         var routes = RouteCatalog.GetRoutes(boss.Map, boss.Id, config);
-        vnav.NavigateToTarget(position.Position, routes, preferredShardId);
+        vnav.NavigateToTarget(position.Position, routes, preferredShardId,
+            dismountOnArrival: boss.Kind == BossEventKind.CriticalEncounter && VnavService.RollCriticalEncounterDismount());
         statusText = $"导航到 {boss.Abbreviation} ({position.Position.X:F1}, {position.Position.Y:F1}, {position.Position.Z:F1})。";
         LogHelper.Chat(statusText);
     }

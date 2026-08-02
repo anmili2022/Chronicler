@@ -294,7 +294,7 @@ internal sealed class FloatingStatusWindow : Window
             var ceRoutes = boss != null && currentMap.HasValue
                 ? RouteCatalog.GetRoutes(currentMap.Value, boss.Id, config)
                 : null;
-            DrawFlagNavButton(ev.MapMarker.Position, $"ce-{ev.DynamicEventId}", boss == null ? null : VnavService.GetPreferredShardIdForCriticalEncounter(currentMap!.Value, boss.Index), ev.MapMarker.Radius, dismountOnArrival: true, routes: ceRoutes);
+            DrawFlagNavButton(ev.MapMarker.Position, $"ce-{ev.DynamicEventId}", boss == null ? null : VnavService.GetPreferredShardIdForCriticalEncounter(currentMap!.Value, boss.Index), ev.MapMarker.Radius, dismountOnArrival: boss != null && VnavService.RollCriticalEncounterDismount(), routes: ceRoutes);
         }
 
         return true;
