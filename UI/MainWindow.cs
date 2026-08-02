@@ -869,7 +869,8 @@ internal sealed class MainWindow : Window
         var preferredShardId = boss.Kind == BossEventKind.CriticalEncounter
             ? VnavService.GetPreferredShardIdForCriticalEncounter(boss.Map, boss.Index)
             : boss.FateId.HasValue ? VnavService.GetPreferredShardIdForFate(boss.FateId.Value) : null;
-        vnav.NavigateTo(position.Position, preferredShardId: preferredShardId);
+        var routes = RouteCatalog.GetRoutes(boss.Map, boss.Id, config);
+        vnav.NavigateToTarget(position.Position, routes, preferredShardId);
         statusText = $"导航到 {boss.Abbreviation} ({position.Position.X:F1}, {position.Position.Y:F1}, {position.Position.Z:F1})。";
         LogHelper.Chat(statusText);
     }

@@ -202,7 +202,7 @@ internal sealed class FloatingStatusWindow : Window
         return flags;
     }
 
-    private unsafe void DrawFlagNavButton(Vector3 pos, string id, uint? preferredShardId = null, float? randomRadius = null, bool dismountOnArrival = false)
+    private unsafe void DrawFlagNavButton(Vector3 pos, string id, uint? preferredShardId = null, float? randomRadius = null, bool dismountOnArrival = false, IReadOnlyList<BossRouteDto>? routes = null)
     {
         if (vnav.IsReady)
         {
@@ -210,10 +210,7 @@ internal sealed class FloatingStatusWindow : Window
             {
                 if (config.ShowNavigationDebug)
                     LogHelper.Chat($"导航调试: 开始导航到 ({pos.X:F1}, {pos.Y:F1}, {pos.Z:F1})");
-                if (randomRadius.HasValue)
-                    vnav.NavigateToRandomInRadius(pos, randomRadius.Value, preferredShardId: preferredShardId, dismountOnArrival: dismountOnArrival);
-                else
-                    vnav.NavigateTo(pos, preferredShardId: preferredShardId, dismountOnArrival: dismountOnArrival);
+                vnav.NavigateToTarget(pos, routes, preferredShardId, randomRadius, dismountOnArrival);
             }
         }
     }
@@ -246,7 +243,10 @@ internal sealed class FloatingStatusWindow : Window
             ImGui.SameLine();
             ImGui.TextUnformatted($"{FormatFateState(fate.State)} {fate.Progress}% {FormatSeconds(fate.TimeRemaining)}");
             ImGui.SameLine();
-            DrawFlagNavButton(fate.Position, $"fate-{fate.FateId}", VnavService.GetPreferredShardIdForFate(fate.FateId), dismountOnArrival: true);
+            var bossRoutes = boss != null && currentMap.HasValue
+                ? RouteCatalog.GetRoutes(currentMap.Value, boss.Id, config)
+                : null;
+            DrawFlagNavButton(fate.Position, $"fate-{fate.FateId}", VnavService.GetPreferredShardIdForFate(fate.FateId), dismountOnArrival: true, routes: bossRoutes);
         }
 
         return true;
@@ -291,7 +291,10 @@ internal sealed class FloatingStatusWindow : Window
                 ? $"{FormatCeState(ev.State)} {ev.Progress}% {FormatSeconds(ev.SecondsLeft)} (报名 {registerRemaining}秒)"
                 : $"{FormatCeState(ev.State)} {ev.Progress}% {FormatSeconds(ev.SecondsLeft)}");
             ImGui.SameLine();
-            DrawFlagNavButton(ev.MapMarker.Position, $"ce-{ev.DynamicEventId}", boss == null ? null : VnavService.GetPreferredShardIdForCriticalEncounter(currentMap!.Value, boss.Index), ev.MapMarker.Radius, dismountOnArrival: true);
+            var ceRoutes = boss != null && currentMap.HasValue
+                ? RouteCatalog.GetRoutes(currentMap.Value, boss.Id, config)
+                : null;
+            DrawFlagNavButton(ev.MapMarker.Position, $"ce-{ev.DynamicEventId}", boss == null ? null : VnavService.GetPreferredShardIdForCriticalEncounter(currentMap!.Value, boss.Index), ev.MapMarker.Radius, dismountOnArrival: true, routes: ceRoutes);
         }
 
         return true;

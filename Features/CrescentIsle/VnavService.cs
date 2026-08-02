@@ -280,6 +280,22 @@ internal sealed class VnavService : IDisposable
         NavigateTo(PickRandomPointInRadius(center, radius), fly, preferredShardId, dismountOnArrival);
     }
 
+    /// <summary>与全自动导航同判的统一入口：需要传送时优先走该 Boss 的路线，否则退化单点。</summary>
+    public void NavigateToTarget(Vector3 pos, IReadOnlyList<BossRouteDto>? routes, uint? preferredShardId = null, float? randomRadius = null, bool dismountOnArrival = false)
+    {
+        var useTeleport = ShouldTeleportToTarget(pos, preferredShardId);
+        if (useTeleport && routes != null && routes.Count > 0)
+        {
+            NavigateViaRoute(routes, pos, fly: false, preferredShardId, randomRadius, dismountOnArrival);
+            return;
+        }
+
+        if (randomRadius.HasValue)
+            NavigateToRandomInRadius(pos, randomRadius.Value, preferredShardId: preferredShardId, dismountOnArrival: dismountOnArrival);
+        else
+            NavigateTo(pos, preferredShardId: preferredShardId, dismountOnArrival: dismountOnArrival);
+    }
+
     public bool NavigateToFlag()
     {
         try
@@ -1005,7 +1021,7 @@ internal sealed class VnavService : IDisposable
         lastTeleportCheckUtc = DateTime.MinValue;
         lastTeleportDebugUtc = DateTime.MinValue;
         DebugChat(useNearbySource
-            ? "导航调试: 40 码内有传送水晶，直接前往水晶后传送。"
+            ? "导航调试: 60 码内有传送水晶，直接前往水晶后传送。"
             : "导航调试: 附近无传送水晶，先回营地再传送。");
 
         if (useNearbySource)
@@ -1066,11 +1082,11 @@ internal sealed class VnavService : IDisposable
                                   && now - pendingTeleportReturnConfirmedUtc.Value >= TimeSpan.FromSeconds(8);
         if (!pendingTeleportSawBetweenAreas && !confirmedLongEnough)
         {
-            PrintTeleportDebug(now, Vector3.Distance(playerPos.Value, pendingTeleportSourcePos), GetActiveAethernetId());
+            PrintTeleportDebug(now, HorizontalDistance(playerPos.Value, pendingTeleportSourcePos), GetActiveAethernetId());
             return;
         }
 
-        var distToSource = Vector3.Distance(playerPos.Value, pendingTeleportSourcePos);
+        var distToSource = HorizontalDistance(playerPos.Value, pendingTeleportSourcePos);
         var activeAethernetId = GetActiveAethernetId();
         if (distToSource > 4f)
         {
@@ -1331,12 +1347,12 @@ internal sealed class VnavService : IDisposable
         var playerToTarget = Vector3.Distance(playerPos.Value, target);
         var shardToTarget = Vector3.Distance(target, nearest.Value.Pos);
 
-        // 以玩家附近水晶为锚：60m 内先步行过去，真正到达 4m 内才走传送。
+        // 以玩家附近水晶为锚：附近 60m 内有水晶，且目标最近水晶与其不同，就进入走传送路径；
+        // 是否真正走到水晶 4m 内才触发传送，由 ProcessPendingTeleport 的 distToSource 判定负责。
         var anchor = FindNearestShardWithin(currentMap.Value, playerPos.Value, 60f);
         if (anchor.HasValue)
         {
-            var shouldTeleport = nearest.Value.Id != anchor.Value.Id
-                                 && Vector3.Distance(playerPos.Value, anchor.Value.Pos) > 4f;
+            var shouldTeleport = nearest.Value.Id != anchor.Value.Id;
             DebugChat($"导航调试: 近水晶锚 玩家距目标={playerToTarget:F1} 目标最近水晶距目标={shardToTarget:F1} 走水={shouldTeleport}");
             return shouldTeleport;
         }
