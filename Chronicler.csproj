@@ -2,7 +2,7 @@
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
 
   <PropertyGroup>
-    <AssemblyVersion>0.2.0.17</AssemblyVersion>
+    <AssemblyVersion>0.2.0.18</AssemblyVersion>
     <InternalName>Chronicler</InternalName>
     <RootNamespace>Chronicler</RootNamespace>
     <Description>Local Crescent Isle historian with xyd.zzmelon.com share-code and shout compatibility.</Description>

@@ -361,33 +361,30 @@ public sealed partial class ChroniclerPlugin
             LogHelper.Chat($"导航调试: 活跃FATE: {fateInfo}");
         }
 
-        foreach (var boss in BossCatalog.GetFates(map))
+        foreach (var match in visibleFates)
         {
-            if (!boss.FateId.HasValue || Configuration.DisabledAutoFateIds.Contains(boss.FateId.Value))
+            var boss = BossCatalog.GetFates(map).FirstOrDefault(candidate =>
+                candidate.FateId == match!.FateId
+                || candidate.ObjectNameAliases.Any(alias => match.Name.TextValue.StartsWith(alias, StringComparison.Ordinal))
+                || candidate.Name.Equals(match.Name.TextValue, StringComparison.Ordinal));
+            if (boss?.FateId is not { } fateId || Configuration.DisabledAutoFateIds.Contains(fateId))
                 continue;
-
-            var match = visibleFates.FirstOrDefault(f => f!.FateId == boss.FateId.Value);
-            if (match == null)
-            {
-                LogHelper.Chat($"导航调试: 目录 {boss.Abbreviation}(FateId={boss.FateId}) 无匹配");
-                continue;
-            }
 
             if (match.State is not FateState.Preparing and not FateState.Running
                 && !(BossCatalog.IsMagicPotFateId(match.FateId) && match.State == FateState.Ending))
             {
-                LogHelper.Chat($"导航调试: {boss.Abbreviation}(FateId={boss.FateId}) 状态={match.State} 跳过");
+                LogHelper.Chat($"导航调试: {boss.Abbreviation}(FateId={fateId}) 状态={match.State} 跳过");
                 continue;
             }
 
-            var key = $"FATE:{boss.FateId.Value}";
+            var key = $"FATE:{fateId}";
             if (activeAutoNavigationKey != key && ShouldSkipAutoTarget(match.State == FateState.Running, match.Progress))
             {
                 LogHelper.Chat($"导航调试: {boss.Abbreviation} 进度 {match.Progress} ≥ {Configuration.AutoSkipProgressPercent} 跳过");
                 continue;
             }
 
-            LogHelper.Chat($"导航调试: 匹配到 {boss.Abbreviation}(FateId={boss.FateId}), 开始导航");
+            LogHelper.Chat($"导航调试: 匹配到 {boss.Abbreviation}(FateId={fateId}), 开始导航");
             NavigateAutoTargetOnce(key, $"FATE {boss.Abbreviation}", match.Position, VnavService.GetPreferredShardIdForFate(match.FateId), null, dismountOnArrival: true, boss);
             return true;
         }
