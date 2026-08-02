@@ -78,27 +78,6 @@ internal static class RouteCatalog
                 Point(-505.26f, 53.14f, 243.91f, BossRoutePointKind.Forced)
             ),
             Route(ExpeditionMap.North, 116, 2,
-                Point(-557.75f, 66.92f, 585.18f),
-                Point(-505.26f, 53.14f, 243.91f)
-            ),
-            Route(ExpeditionMap.North, 116, 3,
-                Point(-557.75f, 66.92f, 585.18f),
-                Point(-542.59f, 57.78f, 511.08f, BossRoutePointKind.Forced),
-                Point(-484.57f, 36.38f, 411.59f, BossRoutePointKind.Forced),
-                Point(-511.51f, 41.01f, 379.66f),
-                Point(-520.81f, 53.13f, 327.14f),
-                Point(-504.92f, 53.16f, 246.14f, BossRoutePointKind.Forced)
-            ),
-            Route(ExpeditionMap.North, 116, 4,
-                Point(-557.75f, 66.92f, 585.18f),
-                Point(-552.19f, 65.49f, 551.53f),
-                Point(-543.96f, 53.85f, 495.71f, BossRoutePointKind.Forced),
-                Point(-586.85f, 50.99f, 424.56f, BossRoutePointKind.Forced),
-                Point(-626.54f, 60.03f, 369.73f),
-                Point(-567.43f, 53.79f, 325.21f),
-                Point(-505.26f, 53.14f, 243.91f, BossRoutePointKind.Forced)
-            ),
-            Route(ExpeditionMap.North, 116, 5,
                 Point(-557.70f, 66.60f, 574.81f),
                 Point(-543.98f, 57.65f, 527.94f, BossRoutePointKind.Forced),
                 Point(-535.93f, 50.08f, 486.27f, BossRoutePointKind.Forced),
@@ -106,6 +85,16 @@ internal static class RouteCatalog
                 Point(-507.64f, 41.52f, 384.75f),
                 Point(-516.42f, 51.21f, 342.23f),
                 Point(-511.00f, 53.15f, 244.33f)
+            ),
+            Route(ExpeditionMap.North, 2083, 0,
+                Point(-453.69f, 37.69f, -353.03f),
+                Point(-510.41f, 37.29f, -295.96f),
+                Point(-602.82f, 41.94f, -274.00f),
+                Point(-695.07f, 50.25f, -251.71f),
+                Point(-733.20f, 63.55f, -227.96f),
+                Point(-741.37f, 82.62f, -182.90f),
+                Point(-697.84f, 86.11f, -146.40f),
+                Point(-668.53f, 87.00f, -58.03f)
             ),
         ];
     }

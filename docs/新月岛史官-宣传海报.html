@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>新月岛史官 - 宣传海报</title>
+  <style>
+    :root {
+      --bg: #19110b;
+      --bg-2: #241608;
+      --paper: #261a0e;
+      --ink: #fbf1e3;
+      --muted: #b8a088;
+      --line: #4a3826;
+      --gold: #e8a94f;
+      --amber: #f2b74b;
+      --orange: #ea8a3c;
+      --coral: #e8755a;
+      --rust: #d96a45;
+      --panel: rgba(40, 27, 15, .85);
+      --panel-2: rgba(50, 33, 18, .9);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 20% 0%, rgba(242, 183, 75, .14), transparent 34%),
+        radial-gradient(circle at 90% 10%, rgba(232, 117, 90, .14), transparent 30%),
+        radial-gradient(circle at 60% 100%, rgba(217, 106, 69, .12), transparent 32%),
+        #0d0805;
+      color: var(--ink);
+      font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+    }
+
+    .poster {
+      width: 1080px;
+      height: 1400px;
+      position: relative;
+      overflow: hidden;
+      background:
+        linear-gradient(165deg, var(--bg-2), var(--bg) 55%);
+      border: 1px solid var(--line);
+      padding: 38px 56px;
+      box-shadow: 0 40px 120px rgba(0, 0, 0, .6);
+    }
+
+    .poster::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 50% -10%, rgba(242, 183, 75, .18), transparent 42%);
+      pointer-events: none;
+    }
+
+    .content { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; }
+
+    /* ===== 顶部 ===== */
+    .topline { display: flex; align-items: center; justify-content: space-between; }
+    .brand { display: flex; align-items: center; gap: 18px; }
+    .brand img {
+      width: 66px; height: 66px; border-radius: 18px;
+      border: 1px solid rgba(242, 183, 75, .45);
+      box-shadow: 0 0 0 5px rgba(242, 183, 75, .09), 0 0 24px rgba(242, 183, 75, .25);
+    }
+    .brand .name { font-size: 22px; font-weight: 800; letter-spacing: 1px; }
+    .brand .sub { color: var(--muted); font-size: 14px; margin-top: 3px; }
+    .tag {
+      display: flex; align-items: center; gap: 8px;
+      border: 1px solid rgba(232, 117, 90, .5);
+      color: #ffc9b8; padding: 9px 14px; font-size: 14px; border-radius: 999px;
+      background: rgba(232, 117, 90, .08);
+    }
+    .tag::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 10px var(--gold); }
+
+    /* ===== 标题 ===== */
+    .headline { margin-top: 22px; }
+    .headline h1 {
+      margin: 0;
+      font-size: 60px;
+      line-height: 1.05;
+      letter-spacing: 1px;
+      font-weight: 800;
+    }
+    .headline h1 .hl {
+      background: linear-gradient(90deg, var(--gold), var(--coral));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .headline .lead {
+      margin: 12px 0 0;
+      max-width: 820px;
+      color: #e3cbb2;
+      font-size: 18px;
+      line-height: 1.55;
+    }
+    .headline .lead b { color: var(--gold); font-weight: 700; }
+
+    /* ===== 特性区 ===== */
+    .features { margin-top: 20px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .feature {
+      position: relative;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, var(--panel-2), var(--panel));
+      border-radius: 16px;
+      padding: 16px 18px 14px;
+      overflow: hidden;
+    }
+    .feature::after {
+      content: "";
+      position: absolute; inset: 0 auto 0 0; width: 4px;
+      background: linear-gradient(180deg, var(--gold), var(--coral));
+    }
+    .feature .num {
+      font-size: 13px; letter-spacing: 2px; color: var(--muted);
+      font-family: Consolas, monospace;
+    }
+    .feature h2 { margin: 6px 0 6px; font-size: 20px; }
+    .feature p { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; }
+    .feature .icon {
+      position: absolute; right: 14px; top: 14px;
+      width: 40px; height: 40px; border-radius: 12px;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: rgba(242, 183, 75, .12);
+      color: #ffffff;
+    }
+    .feature .icon svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* ===== 模拟窗口 ===== */
+    .stage { margin-top: 18px; }
+    .window { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); overflow: hidden; }
+    .window-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 11px 16px; border-bottom: 1px solid var(--line);
+      color: var(--muted); font-size: 13px;
+    }
+    .window-head .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--line); margin-right: 7px; }
+    .window-head .dot.g { background: var(--gold); }
+    .window-head .dot.v { background: var(--coral); }
+    .window-body { display: grid; grid-template-columns: 180px 1fr; min-height: 200px; }
+    .side { border-right: 1px solid var(--line); padding: 12px 10px; }
+    .side small { color: #8a6f55; text-transform: uppercase; letter-spacing: 1px; font-size: 11px; }
+    .nav {
+      margin-top: 6px; padding: 8px 10px; color: #e4cfb5; font-size: 14px;
+      border-radius: 8px;
+    }
+    .nav.active {
+      background: rgba(242, 183, 75, .16);
+      color: #ffe9c4;
+      border: 1px solid rgba(242, 183, 75, .35);
+    }
+    .main-preview { padding: 14px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .mini {
+      border: 1px solid #4a3620; background: rgba(24, 15, 8, .7);
+      border-radius: 10px; padding: 12px;
+    }
+    .mini span { color: var(--muted); font-size: 12px; }
+    .mini b { display: block; font-size: 20px; margin: 7px 0 9px; }
+    .bar { height: 6px; border-radius: 3px; background: #38271a; overflow: hidden; }
+    .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold), var(--coral)); }
+
+    /* ===== 目标导航横条 ===== */
+    .navbar { margin-top: 14px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .navitem {
+      display: flex; align-items: center; gap: 14px;
+      border: 1px solid var(--line); background: var(--panel);
+      border-radius: 12px; padding: 14px 16px;
+    }
+    .navitem .mark {
+      width: 38px; height: 38px; border-radius: 10px; flex: 0 0 auto;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: rgba(242, 183, 75, .14); color: #ffffff;
+    }
+    .navitem .mark svg { width: 19px; height: 19px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .navitem strong { display: block; font-size: 15px; margin-bottom: 2px; }
+    .navitem span { color: var(--muted); font-size: 12px; }
+
+    /* ===== 支持与依赖 ===== */
+    .columns { margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .list { border: 1px solid var(--line); background: var(--panel); border-radius: 14px; padding: 16px 22px; }
+    .list h2 { margin: 0 0 12px; font-size: 20px; display: flex; align-items: center; gap: 9px; }
+    .list h2::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 10px var(--gold); }
+    .list.gold h2::before { background: var(--coral); box-shadow: 0 0 10px var(--coral); }
+    .list p { margin: 8px 0; color: #ead9c0; font-size: 14.5px; }
+    .list p::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 9px; background: var(--coral); vertical-align: middle; border-radius: 50%; }
+    .list.gold p::before { background: var(--gold); }
+
+    /* ===== 安装流程 ===== */
+    .install { margin-top: 16px; }
+    .install h2 { margin: 0 0 10px; font-size: 20px; }
+    .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .step {
+      border: 1px solid var(--line); background: var(--panel);
+      border-radius: 12px; padding: 12px 14px;
+    }
+    .step .step-num {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 24px; height: 24px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--gold), var(--coral));
+      color: #241608; font-weight: 800; font-size: 13px; margin-bottom: 8px;
+    }
+    .step b { display: block; font-size: 14.5px; margin-bottom: 5px; }
+    .step p { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.55; word-break: break-all; }
+
+    /* ===== 页脚 ===== */
+    .footer {
+      margin-top: auto; padding-top: 18px;
+      display: flex; justify-content: space-between; align-items: end;
+      border-top: 1px solid var(--line);
+      color: var(--muted); font-size: 13.5px;
+    }
+    .footer .repo { color: var(--gold); font-weight: 700; }
+  </style>
+</head>
+<body>
+  <article class="poster">
+    <div class="content">
+      <div class="topline">
+        <div class="brand">
+          <img src="../images/icon.png" alt="新月岛史官图标">
+          <div>
+            <div class="name">新月岛史官</div>
+            <div class="sub">Chronicler · Crescent Isle Historian</div>
+          </div>
+        </div>
+        <div class="tag">Dalamud API 15</div>
+      </div>
+
+      <div class="headline">
+        <h1>把散落的时间<br>整理成<span class="hl">&nbsp;岛上的史书&nbsp;</span></h1>
+        <p class="lead">自动记录<b>南征 / 北征</b> CE 与 FATE 出现时间，兼容 xyd 分享码与喊话同步，目标出现后一键<b>导航前往</b>，把记录、同步、赶路放进同一条流程。</p>
+      </div>
+
+      <section class="features">
+        <div class="feature">
+          <div class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 7v5l3 2"></path><circle cx="12" cy="12" r="8"></circle></svg></div>
+          <div class="num">01</div>
+          <h2>出现时间记录</h2>
+          <p>自动或手动记录 Boss 出现时间，按本地 HH:mm 输出，保留掉落标记与触发条件。</p>
+        </div>
+        <div class="feature">
+          <div class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 12a3 3 0 1 0-3-3"></path><path d="M16 9a3 3 0 1 0 3-3"></path><path d="M8.5 9.2 15.5 8"></path><path d="M8.5 14.8 15.5 16"></path><circle cx="5" cy="15" r="3"></circle><circle cx="19" cy="15" r="3"></circle></svg></div>
+          <div class="num">02</div>
+          <h2>xyd 分享码与喊话</h2>
+          <p>导入导出分享码，生成普通喊话和离岛喊话，监听聊天自动同步本地记录。</p>
+        </div>
+        <div class="feature">
+          <div class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v4"></path><path d="M12 17v4"></path><path d="M5.6 5.6 8.4 8.4"></path><path d="M15.6 15.6 18.4 18.4"></path><path d="M3 12h4"></path><path d="M17 12h4"></path><path d="M5.6 18.4 8.4 15.6"></path><path d="M15.6 8.4 18.4 5.6"></path><circle cx="12" cy="12" r="3"></circle></svg></div>
+          <div class="num">03</div>
+          <h2>全自动导航</h2>
+          <p>新月岛史官目标出现后延迟导航，结束后先回营地，再自动扫描下一个目标。</p>
+        </div>
+      </section>
+
+      <section class="stage">
+        <div class="window">
+          <div class="window-head">
+            <span><span class="dot g"></span><span class="dot v"></span>&nbsp; 新月岛史官 · 总览</span>
+            <span>自动识别地图 · 北征</span>
+          </div>
+          <div class="window-body">
+            <div class="side">
+              <small>Workspace</small>
+              <div class="nav active">北征 · 记录</div>
+              <div class="nav">南征 · 记录</div>
+              <div class="nav">自动寻路</div>
+            </div>
+            <div class="main-preview">
+              <div class="mini"><span>已收录全部 FATE</span><b>全部</b><div class="bar"><i style="width:100%"></i></div></div>
+              <div class="mini"><span>已收录全部 CE</span><b>全部</b><div class="bar"><i style="width:100%"></i></div></div>
+              <div class="mini"><span>可导航所有 Boss</span><b>全部</b><div class="bar"><i style="width:100%"></i></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="navbar">
+          <div class="navitem">
+            <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 7v5l3 2"></path><circle cx="12" cy="12" r="8"></circle></svg></span>
+            <div><strong>记录核心</strong><span>稳定保存每次出现时间</span></div>
+          </div>
+          <div class="navitem">
+            <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v4"></path><path d="M12 17v4"></path><path d="M5.6 5.6 8.4 8.4"></path><path d="M15.6 15.6 18.4 18.4"></path><path d="M3 12h4"></path><path d="M17 12h4"></path><path d="M5.6 18.4 8.4 15.6"></path><path d="M15.6 8.4 18.4 5.6"></path><circle cx="12" cy="12" r="3"></circle></svg></span>
+            <div><strong>目标导航</strong><span>直达新月岛史官目标</span></div>
+          </div>
+          <div class="navitem">
+            <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 12a3 3 0 1 0-3-3"></path><path d="M16 9a3 3 0 1 0 3-3"></path><path d="M8.5 9.2 15.5 8"></path><path d="M8.5 14.8 15.5 16"></path><circle cx="5" cy="15" r="3"></circle><circle cx="19" cy="15" r="3"></circle></svg></span>
+            <div><strong>分享同步</strong><span>xyd 码与喊话一键互通</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="columns">
+        <div class="list">
+          <h2>已经支持</h2>
+          <p>本地记录出现时间</p>
+          <p>南征、北征双地图切换</p>
+          <p>xyd 分享码与喊话互通</p>
+          <p>聊天监听自动同步</p>
+          <p>CE / FATE 目标导航</p>
+        </div>
+        <div class="list gold">
+          <h2>推荐依赖</h2>
+          <p>vnavmesh</p>
+          <p>Lifestream 2.5.4.15+</p>
+          <p>Dalamud API 15</p>
+          <p>FFXIV 国服 7.5x</p>
+        </div>
+      </section>
+
+      <section class="install">
+        <h2>安装方式</h2>
+        <div class="steps">
+          <div class="step">
+            <span class="step-num">1</span>
+            <b>打开卫月设置</b>
+            <p>进入「实验室」或「第三方插件」选项卡。</p>
+          </div>
+          <div class="step">
+            <span class="step-num">2</span>
+            <b>添加仓库链接</b>
+            <p>https://raw.githubusercontent.com/flyrio/TargetSelector/refs/heads/main/TargetSelector.json</p>
+          </div>
+          <div class="step">
+            <span class="step-num">3</span>
+            <b>搜索并安装</b>
+            <p>搜索「新月岛史官」或「Chronicler」。</p>
+          </div>
+          <div class="step">
+            <span class="step-num">4</span>
+            <b>启用插件</b>
+            <p>安装后在插件列表中启用，输入 /shiguan 打开。</p>
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <span>Chronicler / 新月岛史官</span>
+        <span class="repo">github.com/anmili2022/Chronicler</span>
+      </footer>
+    </div>
+  </article>
+</body>
+</html>

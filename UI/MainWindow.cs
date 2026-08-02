@@ -583,7 +583,21 @@ internal sealed class MainWindow : Window
 
         ImGui.Spacing();
         ImGui.Separator();
-        ImGui.TextUnformatted("录制后可用 /shiguan route export 生成内置代码，粘贴到 RouteCatalog.BuildRoutes 随版本分发。");
+        ImGui.TextUnformatted("录制好路线后，点击下方按钮一键复制内置代码，发给作者即可内置进插件随版本分发。");
+        if (ImGui.Button("复制内置路线代码##route_export_all"))
+        {
+            var code = RouteCodeExporter.Export(config.BossRoutes);
+            if (string.IsNullOrWhiteSpace(code))
+            {
+                statusText = "当前没有已录制的路线。";
+            }
+            else
+            {
+                ImGui.SetClipboardText(code);
+                statusText = "已复制整套内置路线代码到剪贴板。";
+                LogHelper.Chat("已复制内置路线代码到剪贴板。");
+            }
+        }
     }
 
     private void DrawRouteBossGroup(ExpeditionMap map, IReadOnlyList<BossEntry> bosses, ref int selectedBossIndex, ref int selectedRouteIndex, string idPrefix)

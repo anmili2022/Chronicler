@@ -258,7 +258,7 @@ internal sealed class VnavService : IDisposable
                         var camp = GetCampShard(map);
                         if (camp.HasValue)
                         {
-                            var nearbySource = FindNearestShardWithin(map, playerPos.Value, 40f);
+                            var nearbySource = FindNearestShardWithin(map, playerPos.Value, 60f);
                             var source = nearbySource ?? camp.Value;
                             StartMoveThenTeleport(source.Pos, nearest.Value.Id, nearest.Value.IsPlaceNameId, target, fly, nearbySource.HasValue);
                             return;
@@ -1072,7 +1072,7 @@ internal sealed class VnavService : IDisposable
 
         var distToSource = Vector3.Distance(playerPos.Value, pendingTeleportSourcePos);
         var activeAethernetId = GetActiveAethernetId();
-        if (distToSource > 8f)
+        if (distToSource > 4f)
         {
             pendingTeleportBaseCampUtc = null;
             if (!pendingTeleportWalkingToSource)
@@ -1331,12 +1331,14 @@ internal sealed class VnavService : IDisposable
         var playerToTarget = Vector3.Distance(playerPos.Value, target);
         var shardToTarget = Vector3.Distance(target, nearest.Value.Pos);
 
-        var camp = GetCampShard(currentMap.Value);
-        if (camp.HasValue && HorizontalDistance(playerPos.Value, camp.Value.Pos) < 80f)
+        // 以玩家附近水晶为锚：60m 内先步行过去，真正到达 4m 内才走传送。
+        var anchor = FindNearestShardWithin(currentMap.Value, playerPos.Value, 60f);
+        if (anchor.HasValue)
         {
-            var shouldTeleportFromCamp = nearest.Value.Id != camp.Value.Id;
-            DebugChat($"导航调试: 已在营地 玩家距目标={playerToTarget:F1} 目标最近的水晶距目标={shardToTarget:F1} 走传送={shouldTeleportFromCamp}");
-            return shouldTeleportFromCamp;
+            var shouldTeleport = nearest.Value.Id != anchor.Value.Id
+                                 && Vector3.Distance(playerPos.Value, anchor.Value.Pos) > 4f;
+            DebugChat($"导航调试: 近水晶锚 玩家距目标={playerToTarget:F1} 目标最近水晶距目标={shardToTarget:F1} 走水={shouldTeleport}");
+            return shouldTeleport;
         }
 
         return playerToTarget + config.AutoNavigationTeleportThreshold > shardToTarget;
