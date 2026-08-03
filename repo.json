@@ -5,7 +5,7 @@
         "Description": "进入新月岛后自动记录南征/北征新月岛史官目标出现时间，支持导入/导出 xyd.zzmelon.com 分享码，生成喊话，并监听游戏内喊话自动同步状态。可用宏命令 /shiguan enter 或 /史官 上岛 前往新月岛入口。导航传送功能需要 Lifestream 2.5.4.15 以上和 vnavmesh。",
         "IconUrl": "https://raw.githubusercontent.com/anmili2022/Chronicler/main/images/icon.png",
         "InternalName": "Chronicler",
-        "AssemblyVersion": "0.2.0.22",
+        "AssemblyVersion": "0.2.0.23",
         "RepoUrl": "https://github.com/anmili2022/Chronicler",
         "ApplicableVersion": "any",
         "DalamudApiLevel": 15,
@@ -18,9 +18,9 @@
         ],
         "IsHide": false,
         "IsTestingExclusive": false,
-        "DownloadLinkInstall": "https://github.com/anmili2022/Chronicler/releases/download/v0.2.0.22/Chronicler.zip",
-        "DownloadLinkTesting": "https://github.com/anmili2022/Chronicler/releases/download/v0.2.0.22/Chronicler.zip",
-        "DownloadLinkUpdate": "https://github.com/anmili2022/Chronicler/releases/download/v0.2.0.22/Chronicler.zip",
-        "LastUpdated": "1785779326"
+        "DownloadLinkInstall": "https://github.com/anmili2022/Chronicler/releases/download/v0.2.0.23/Chronicler.zip",
+        "DownloadLinkTesting": "https://github.com/anmili2022/Chronicler/releases/download/v0.2.0.23/Chronicler.zip",
+        "DownloadLinkUpdate": "https://github.com/anmili2022/Chronicler/releases/download/v0.2.0.23/Chronicler.zip",
+        "LastUpdated": "1785783770"
     }
 ]

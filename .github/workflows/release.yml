@@ -94,7 +94,7 @@ jobs:
         shell: pwsh
         run: |
           Compress-Archive `
-            -Path ./output/Chronicler.dll,./output/Chronicler.json,./output/Chronicler.deps.json `
+            -Path ./output/Chronicler.dll,./output/KamiToolKit.dll,./output/Chronicler.json,./output/Chronicler.deps.json `
             -DestinationPath ./Chronicler.zip `
             -Force
 
