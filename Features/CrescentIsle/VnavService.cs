@@ -1466,6 +1466,7 @@ internal sealed class VnavService : IDisposable
 
     public unsafe void ReturnToBaseCamp()
     {
+        DebugChat("导航调试: 收到回营地请求，正在清除现有导航状态。");
         ClearPendingNavigation();
         ClearPendingMove();
         ClearPendingReturnNavigation();
@@ -1476,8 +1477,8 @@ internal sealed class VnavService : IDisposable
         {
             pendingReturnConfirm = true;
             pendingReturnConfirmStartedUtc = DateTime.UtcNow;
-            ActionManager.Instance()->UseAction(ActionType.GeneralAction, 8);
-            DebugChat("导航调试: 使用亚返回回营地。");
+            var used = ActionManager.Instance()->UseAction(ActionType.GeneralAction, 8);
+            DebugChat($"导航调试: 使用亚返回回营地，UseAction={used}。");
         }
         catch (Exception ex)
         {

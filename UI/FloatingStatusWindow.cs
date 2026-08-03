@@ -113,6 +113,11 @@ internal sealed class FloatingStatusWindow : Window
             ImGui.SameLine();
             if (ImGui.SmallButton("回营地"))
             {
+                if (config.ShowNavigationDebug)
+                {
+                    var map = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, config);
+                    LogHelper.Chat($"点击回营地，地图={(map.HasValue ? FormatMapName(map.Value) : "未识别")}，待命点={config.HasAutoReturnStandbyPoint}", PluginMessageKind.NavigationDebug);
+                }
                 if (config.HasAutoReturnStandbyPoint)
                 {
                     var target = new Vector3(config.AutoReturnStandbyX, config.AutoReturnStandbyY, config.AutoReturnStandbyZ);
