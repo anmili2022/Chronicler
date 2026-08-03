@@ -221,6 +221,14 @@ internal sealed class VnavService : IDisposable
     public unsafe void NavigateTo(Vector3 dest, bool fly = false, uint? preferredShardId = null, bool dismountOnArrival = false)
         => NavigateToInternal(dest, fly, preferredShardId, dismountOnArrival, clearRouteNavigation: true);
 
+    /// <summary>直接使用 vnavmesh 前往目标，不选择水晶、不传送、不回营地。</summary>
+    public void NavigateDirectTo(Vector3 dest, bool fly = false)
+    {
+        ClearPendingNavigation();
+        ClearRouteNavigation();
+        StartMove(dest, fly);
+    }
+
     private unsafe void NavigateToInternal(Vector3 dest, bool fly, uint? preferredShardId, bool dismountOnArrival, bool clearRouteNavigation, Vector3? teleportSelectionTarget = null)
     {
         ClearPendingNavigation();
@@ -283,11 +291,10 @@ internal sealed class VnavService : IDisposable
         NavigateTo(PickRandomPointInRadius(center, radius), fly, preferredShardId, dismountOnArrival);
     }
 
-    /// <summary>与全自动导航同判的统一入口：需要传送时优先走该 Boss 的路线，否则退化单点。</summary>
+    /// <summary>统一目标导航入口：存在有效路线时优先走路线，否则退化单点。</summary>
     public void NavigateToTarget(Vector3 pos, IReadOnlyList<BossRouteDto>? routes, uint? preferredShardId = null, float? randomRadius = null, bool dismountOnArrival = false)
     {
-        var useTeleport = ShouldTeleportToTarget(pos, preferredShardId);
-        if (useTeleport && routes != null && routes.Count > 0)
+        if (routes != null && routes.Any(route => route.Points.Count >= 2))
         {
             NavigateViaRoute(routes, pos, fly: false, preferredShardId, randomRadius, dismountOnArrival);
             return;
@@ -1200,13 +1207,13 @@ internal sealed class VnavService : IDisposable
     private void DebugChat(string message)
     {
         if (config.ShowNavigationDebug)
-            LogHelper.Chat(message);
+            LogHelper.Chat(message.Replace("导航调试: ", string.Empty, StringComparison.Ordinal), PluginMessageKind.NavigationDebug);
     }
 
     private void RouteDebugChat(string message)
     {
         if (config.ShowRouteNavigationDebug)
-            LogHelper.Chat($"路线导航: {message}");
+            LogHelper.Chat(message, PluginMessageKind.RouteDebug);
     }
 
     private void StartMove(Vector3 target, bool fly)
@@ -1404,7 +1411,7 @@ internal sealed class VnavService : IDisposable
         lastDismountAttemptUtc = DateTime.MinValue;
         pendingDismountArrivedLogged = false;
         pendingDismountFired = false;
-        LogHelper.Chat($"下坐骑: 已设置目标点 ({target.X:F1}, {target.Y:F1}, {target.Z:F1})");
+        LogHelper.Chat($"下坐骑: 已设置目标点 ({target.X:F1}, {target.Y:F1}, {target.Z:F1})", PluginMessageKind.Navigation);
     }
 
     private unsafe void ProcessPendingDismount()
@@ -1437,7 +1444,7 @@ internal sealed class VnavService : IDisposable
         if (!pendingDismountArrivedLogged)
         {
             pendingDismountArrivedLogged = true;
-            LogHelper.Chat($"已到达目标点附近({dist:F1}y)");
+            LogHelper.Chat($"已到达目标点附近({dist:F1}y)", PluginMessageKind.Navigation);
         }
 
         if (now - lastDismountAttemptUtc < TimeSpan.FromMilliseconds(500))
@@ -1488,7 +1495,7 @@ internal sealed class VnavService : IDisposable
         pendingReturnNavigationBaseCampUtc = null;
         pendingReturnNavigationSawBetweenAreas = false;
         pendingReturnNavigationConfirmedUtc = null;
-        LogHelper.Chat("回营地后将前往待命点。");
+        LogHelper.Chat("回营地后将前往待命点。", PluginMessageKind.Navigation);
     }
 
     private void ProcessPendingReturnNavigation()
@@ -1540,7 +1547,7 @@ internal sealed class VnavService : IDisposable
         var target = pendingReturnNavigationTarget.Value;
         ClearPendingReturnNavigation();
         try { stop.InvokeAction(); } catch { }
-        LogHelper.Chat("前往待命点。");
+        LogHelper.Chat("前往待命点。", PluginMessageKind.Navigation);
         NavigateTo(target);
     }
 

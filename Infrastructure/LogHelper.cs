@@ -1,5 +1,15 @@
 namespace Chronicler;
 
+internal enum PluginMessageKind
+{
+    General,
+    AutoRecord,
+    Navigation,
+    AutoNavigation,
+    NavigationDebug,
+    RouteDebug,
+}
+
 internal static class LogHelper
 {
     private static PluginConfiguration? config;
@@ -17,17 +27,33 @@ internal static class LogHelper
 
     public static void Error(Exception ex, string message) => DalamudApi.Log.Error(ex, message);
 
-    public static void Chat(string message)
+    public static void Chat(string message, PluginMessageKind kind = PluginMessageKind.General)
     {
-        if (message.StartsWith("导航调试:", StringComparison.Ordinal) && config?.ShowNavigationDebug != true)
+        if (!ShouldShow(kind))
             return;
 
-        if ((message.StartsWith("全自动:", StringComparison.Ordinal) || message.StartsWith("全自动模式", StringComparison.Ordinal))
-            && config?.ShowAutoNavigationStatusMessages == false)
-            return;
-
-        PrintPluginMessage(message);
+        PrintPluginMessage(FormatMessage(message, kind));
     }
+
+    private static bool ShouldShow(PluginMessageKind kind) => kind switch
+    {
+        PluginMessageKind.AutoRecord => config?.ShowAutoRecordMessages != false,
+        PluginMessageKind.Navigation => config?.ShowNavigationMessages != false,
+        PluginMessageKind.AutoNavigation => config?.ShowAutoNavigationStatusMessages != false,
+        PluginMessageKind.NavigationDebug => config?.ShowNavigationDebug == true,
+        PluginMessageKind.RouteDebug => config?.ShowRouteNavigationDebug == true,
+        _ => true,
+    };
+
+    private static string FormatMessage(string message, PluginMessageKind kind) => kind switch
+    {
+        PluginMessageKind.AutoRecord => $"[自动记录] {message}",
+        PluginMessageKind.Navigation => $"[导航通知] {message}",
+        PluginMessageKind.AutoNavigation => $"[全自动] {message}",
+        PluginMessageKind.NavigationDebug => $"[导航调试] {message}",
+        PluginMessageKind.RouteDebug => $"[路线调试] {message}",
+        _ => message,
+    };
 
     public static void PrintPluginMessage(string message)
     {

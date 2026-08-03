@@ -10,7 +10,7 @@ public sealed class PluginConfiguration : IPluginConfiguration
     [NonSerialized]
     private IDalamudPluginInterface? pluginInterface;
 
-    public int Version { get; set; } = 3;
+    public int Version { get; set; } = 5;
     public bool Enabled = true;
     public bool ListenChat = true;
     public bool AutoDetectAppearances = true;
@@ -44,8 +44,14 @@ public sealed class PluginConfiguration : IPluginConfiguration
     public bool ShowNavigationDebug = false;
     public bool ShowRouteNavigationDebug = false;
     public bool ShowAutoNavigationStatusMessages = true;
+    public bool ShowAutoRecordMessages = true;
+    public bool ShowNavigationMessages = true;
     public bool ShowFloatingStatusWindow = true;
     public bool LockFloatingStatusWindow = false;
+    public bool ShowFloatingTreasureCounts = false;
+    public bool ShowFloatingCarrotCount = false;
+    public bool SortChestCatalogByDistance = false;
+    public bool SortChestCatalogByBocchiRoute = false;
     public XivChatType MessageChatType = XivChatType.Echo;
     public ExpeditionMap LastSelectedMap = ExpeditionMap.South;
     public string LastIslandId = string.Empty;
@@ -88,6 +94,24 @@ public sealed class PluginConfiguration : IPluginConfiguration
             AutoIslandLeaveByPlayerCount = true;
             AutoIslandLeaveByTime = true;
             Version = 3;
+            Save();
+        }
+
+        if (Version < 4)
+        {
+            ShowAutoRecordMessages = true;
+            ShowNavigationMessages = true;
+            Version = 4;
+            Save();
+        }
+
+        if (Version < 5)
+        {
+            ShowFloatingTreasureCounts = false;
+            ShowFloatingCarrotCount = false;
+            SortChestCatalogByDistance = false;
+            SortChestCatalogByBocchiRoute = false;
+            Version = 5;
             Save();
         }
     }

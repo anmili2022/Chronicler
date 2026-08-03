@@ -17,8 +17,15 @@ public sealed partial class ChroniclerPlugin
         {
             var currentMap = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, Configuration);
 
-            if (currentMap.HasValue && Configuration.AutoIslandLeaveByPlayerCount && Configuration.AutoIslandLeavePlayerThreshold > 0)
-                instancePopulationProvider.Update(DateTime.UtcNow, Configuration.AutoIslandLeavePlayerThreshold);
+            if (currentMap.HasValue)
+            {
+                var lowPopulationThreshold = Math.Max(1, Configuration.AutoIslandLeavePlayerThreshold);
+                instancePopulationProvider.Update(DateTime.UtcNow, lowPopulationThreshold);
+            }
+            else
+            {
+                instancePopulationProvider.Reset();
+            }
 
             ProcessStandbyNavigation();
 
@@ -66,7 +73,7 @@ public sealed partial class ChroniclerPlugin
                     autoIslandReentryStarted = false;
                     autoIslandLeaveRequestedUtc = DateTime.MinValue;
                     autoIslandLeftUtc = null;
-                    LogHelper.Chat("自动进出岛: 已重新进入新月岛。");
+                    LogHelper.Chat("自动进出岛: 已重新进入新月岛。", PluginMessageKind.AutoNavigation);
                     return false;
                 }
 
@@ -82,7 +89,7 @@ public sealed partial class ChroniclerPlugin
                 Configuration.LastSelectedMap = Configuration.AutoIslandTargetMap;
                 Configuration.Save();
                 autoIslandReentryStarted = true;
-                LogHelper.Chat($"自动进出岛: 已离岛，开始进入{GetMapName(Configuration.AutoIslandTargetMap)}。");
+                LogHelper.Chat($"自动进出岛: 已离岛，开始进入{GetMapName(Configuration.AutoIslandTargetMap)}。", PluginMessageKind.AutoNavigation);
                 vnav.GoToCrescentIsle();
             }
 
@@ -122,7 +129,7 @@ public sealed partial class ChroniclerPlugin
                 : $"任务剩余 {remainingTimeText}<{Configuration.AutoIslandLeaveTimeThresholdMinutes} 分钟";
         vnav.Stop();        if (!DalamudApi.Commands.ProcessCommand("/pdr leaveduty"))
         {
-            LogHelper.Chat("自动进出岛: 未找到 /pdr leaveduty 命令，请确认 PDR 已安装并加载。");
+            LogHelper.Chat("自动进出岛: 未找到 /pdr leaveduty 命令，请确认 PDR 已安装并加载。", PluginMessageKind.AutoNavigation);
             autoIslandLeaveRequestedUtc = now;
             return true;
         }
@@ -131,7 +138,7 @@ public sealed partial class ChroniclerPlugin
         autoIslandReentryStarted = false;
         autoIslandLeaveRequestedUtc = now;
         autoIslandLeftUtc = null;
-        LogHelper.Chat($"自动进出岛: {reason}，已执行 /pdr leaveduty，{Configuration.AutoIslandReenterDelaySeconds} 秒后重新进岛。");
+        LogHelper.Chat($"自动进出岛: {reason}，已执行 /pdr leaveduty，{Configuration.AutoIslandReenterDelaySeconds} 秒后重新进岛。", PluginMessageKind.AutoNavigation);
         return true;
     }
 
@@ -169,7 +176,7 @@ public sealed partial class ChroniclerPlugin
                 && !IsAtCampOrStandby(currentMap.Value))
             {
                 autoNavWasEnabled = true;
-                LogHelper.Chat("全自动: 开启时不在营地，直接扫描目标（不再强制先回营地）。");
+                LogHelper.Chat("开启时不在营地，直接扫描目标（不再强制先回营地）。", PluginMessageKind.AutoNavigation);
                 if (Configuration.HasAutoReturnStandbyPoint)
                 {
                     pendingStandbyNavStartedUtc = DateTime.UtcNow;
@@ -255,13 +262,13 @@ public sealed partial class ChroniclerPlugin
                 pendingAutoReturnStartedUtc = DateTime.UtcNow;
                 pendingAutoReturnBaseCampUtc = null;
                 pendingAutoReturnSawBetweenAreas = false;
-                LogHelper.Chat("全自动: 等待回营地超时，重试一次。");
+                LogHelper.Chat("等待回营地超时，重试一次。", PluginMessageKind.AutoNavigation);
                 vnav.ReturnToBaseCamp();
                 return true;
             }
 
             ClearAutoReturnGate();
-            LogHelper.Chat("全自动: 等待回营地超时，恢复扫描目标。");
+            LogHelper.Chat("等待回营地超时，恢复扫描目标。", PluginMessageKind.AutoNavigation);
             return false;
         }
 
@@ -295,7 +302,7 @@ public sealed partial class ChroniclerPlugin
 
         ClearAutoReturnGate();
         postReturnIdleUtc = DateTime.UtcNow;
-        LogHelper.Chat("全自动: 已回到营地，10 秒后开始扫描目标。");
+        LogHelper.Chat("已回到营地，10 秒后开始扫描目标。", PluginMessageKind.AutoNavigation);
         return false;
     }
 
@@ -358,7 +365,7 @@ public sealed partial class ChroniclerPlugin
             var fateInfo = string.Join(", ", visibleFates
                 .Where(f => f != null)
                 .Select(f => $"{f!.FateId}({(int)f.State}:{f.Progress})"));
-            LogHelper.Chat($"导航调试: 活跃FATE: {fateInfo}");
+            LogHelper.Chat($"活跃FATE: {fateInfo}", PluginMessageKind.NavigationDebug);
         }
 
         foreach (var match in visibleFates)
@@ -373,18 +380,18 @@ public sealed partial class ChroniclerPlugin
             if (match.State is not FateState.Preparing and not FateState.Running
                 && !(BossCatalog.IsMagicPotFateId(match.FateId) && match.State == FateState.Ending))
             {
-                LogHelper.Chat($"导航调试: {boss.Abbreviation}(FateId={fateId}) 状态={match.State} 跳过");
+                LogHelper.Chat($"{boss.Abbreviation}(FateId={fateId}) 状态={match.State} 跳过", PluginMessageKind.NavigationDebug);
                 continue;
             }
 
             var key = $"FATE:{fateId}";
             if (activeAutoNavigationKey != key && ShouldSkipAutoTarget(match.State == FateState.Running, match.Progress))
             {
-                LogHelper.Chat($"导航调试: {boss.Abbreviation} 进度 {match.Progress} ≥ {Configuration.AutoSkipProgressPercent} 跳过");
+                LogHelper.Chat($"{boss.Abbreviation} 进度 {match.Progress} ≥ {Configuration.AutoSkipProgressPercent} 跳过", PluginMessageKind.NavigationDebug);
                 continue;
             }
 
-            LogHelper.Chat($"导航调试: 匹配到 {boss.Abbreviation}(FateId={fateId}), 开始导航");
+            LogHelper.Chat($"匹配到 {boss.Abbreviation}(FateId={fateId}), 开始导航", PluginMessageKind.NavigationDebug);
             NavigateAutoTargetOnce(key, $"FATE {boss.Abbreviation}", match.Position, VnavService.GetPreferredShardIdForFate(match.FateId), null, dismountOnArrival: true, boss);
             return true;
         }
@@ -443,7 +450,7 @@ public sealed partial class ChroniclerPlugin
             {
                 pendingAutoNavigationKey = key;
                 pendingAutoNavigationDueUtc = now + TimeSpan.FromSeconds(startDelaySeconds);
-                LogHelper.Chat($"全自动: 发现 {label}，{startDelaySeconds} 秒后导航。");
+                LogHelper.Chat($"发现 {label}，{startDelaySeconds} 秒后导航。", PluginMessageKind.AutoNavigation);
                 return;
             }
 
@@ -456,7 +463,7 @@ public sealed partial class ChroniclerPlugin
         activeAutoNavigationKey = key;
         autoNavigationReturned = false;
         autoReturnDueUtc = null;
-        LogHelper.Chat($"全自动: 导航到 {label}");
+        LogHelper.Chat($"导航到 {label}", PluginMessageKind.AutoNavigation);
 
         var useTeleport = vnav.ShouldTeleportToTarget(pos, preferredShardId);
         if (!useTeleport)
@@ -494,7 +501,7 @@ public sealed partial class ChroniclerPlugin
         {
             autoReturnDueUtc = now + TimeSpan.FromSeconds(delaySeconds);
             vnav.Stop();
-            LogHelper.Chat(delaySeconds > 0 ? $"全自动: 目标已结束，延迟 {delaySeconds} 秒后回营地。" : "全自动: 目标已结束，回营地等待下一次。");
+            LogHelper.Chat(delaySeconds > 0 ? $"目标已结束，延迟 {delaySeconds} 秒后回营地。" : "目标已结束，回营地等待下一次。", PluginMessageKind.AutoNavigation);
         }
 
         if (now < autoReturnDueUtc.Value)
@@ -534,7 +541,7 @@ public sealed partial class ChroniclerPlugin
             && DateTime.UtcNow - pendingStandbyNavStartedUtc.Value > TimeSpan.FromSeconds(30))
         {
             ClearPendingStandbyNavigation();
-            LogHelper.Chat("全自动: 等待回营地超时，取消前往待命点。");
+            LogHelper.Chat("等待回营地超时，取消前往待命点。", PluginMessageKind.AutoNavigation);
             return;
         }
 
@@ -572,7 +579,7 @@ public sealed partial class ChroniclerPlugin
 
         var pos = new Vector3(Configuration.AutoReturnStandbyX, Configuration.AutoReturnStandbyY, Configuration.AutoReturnStandbyZ);
         ClearPendingStandbyNavigation();
-        LogHelper.Chat("全自动: 前往待命点。");
+        LogHelper.Chat("前往待命点。", PluginMessageKind.AutoNavigation);
         vnav.Stop();
         vnav.NavigateTo(pos);
     }

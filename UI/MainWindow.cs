@@ -6,6 +6,7 @@ using Dalamud.Game.ClientState.Fates;
 using Dalamud.Interface.Windowing;
 using FFXIVClientStructs.FFXIV.Client.Game.InstanceContent;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using XIVTreasure = Lumina.Excel.Sheets.Treasure;
 using TerritoryTypeSheet = Lumina.Excel.Sheets.TerritoryType;
 
 namespace Chronicler;
@@ -71,11 +72,15 @@ internal sealed class MainWindow : Window
             ImGui.EndTabItem();
         }
 
+        if (ImGui.BeginTabItem("宝箱"))
+        {
+            DrawChestCatalog(config.LastSelectedMap);
+            ImGui.EndTabItem();
+        }
+
         if (ImGui.BeginTabItem("设置"))
         {
             DrawSettings();
-            ImGui.Separator();
-            DrawTerritorySettings();
             ImGui.EndTabItem();
         }
 
@@ -120,53 +125,307 @@ internal sealed class MainWindow : Window
             config.Enabled = enabled;
             config.Save();
         }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("关闭后插件不再执行自动记录、聊天同步和自动导航。");
+
+        ImGui.Separator();
+
+        var showFloating = config.ShowFloatingStatusWindow;
+        if (ImGui.Checkbox("显示悬浮窗", ref showFloating))
+        {
+            config.ShowFloatingStatusWindow = showFloating;
+            config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("在已识别的新月岛地图显示 FATE/CE 状态悬浮窗。");
 
         ImGui.SameLine();
+        ImGui.BeginDisabled(!config.ShowFloatingStatusWindow);
+        var lockFloating = config.LockFloatingStatusWindow;
+        if (ImGui.Checkbox("锁定", ref lockFloating))
+        {
+            config.LockFloatingStatusWindow = lockFloating;
+            config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("锁定后不能拖动悬浮窗。");
+        ImGui.EndDisabled();
+
+        ImGui.SameLine();
+        var showTreasureCounts = config.ShowFloatingTreasureCounts;
+        if (ImGui.Checkbox("宝箱探测", ref showTreasureCounts))
+        {
+            config.ShowFloatingTreasureCounts = showTreasureCounts;
+            config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("在悬浮窗显示当前地图已加载的铜宝箱和银宝箱数量。");
+
+        ImGui.SameLine();
+        var showCarrotCount = config.ShowFloatingCarrotCount;
+        if (ImGui.Checkbox("胡萝卜探测", ref showCarrotCount))
+        {
+            config.ShowFloatingCarrotCount = showCarrotCount;
+            config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("探测当前地图已加载的胡萝卜，并在悬浮窗显示数量和导航按钮。");
+
+        ImGui.Separator();
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextUnformatted("同步");
+        ImGui.SameLine();
         var listenChat = config.ListenChat;
-        if (ImGui.Checkbox("监听聊天同步", ref listenChat))
+        if (ImGui.Checkbox("聊天同步", ref listenChat))
         {
             config.ListenChat = listenChat;
             config.Save();
         }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("读取聊天中的 xyd 分享码和“简称 [HH:mm]”记录并同步到本地；不会发送聊天消息。");
 
         ImGui.SameLine();
         var autoDetect = config.AutoDetectAppearances;
-        if (ImGui.Checkbox("自动记录出现", ref autoDetect))
+        if (ImGui.Checkbox("自动记录##auto_detect", ref autoDetect))
         {
             config.AutoDetectAppearances = autoDetect;
             config.Save();
         }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("自动观测 FATE/CE 出现并写入本地记录。");
+
+        ImGui.Separator();
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextUnformatted("通知");
+        ImGui.SameLine();
+        var showAutoRecordMessages = config.ShowAutoRecordMessages;
+        if (ImGui.Checkbox("自动记录##auto_record_messages", ref showAutoRecordMessages))
+        {
+            config.ShowAutoRecordMessages = showAutoRecordMessages;
+            config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("显示或隐藏“[自动记录]”聊天提示，不影响实际自动记录。");
 
         ImGui.SameLine();
+        var showNavigationMessages = config.ShowNavigationMessages;
+        if (ImGui.Checkbox("导航通知", ref showNavigationMessages))
+        {
+            config.ShowNavigationMessages = showNavigationMessages;
+            config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("显示或隐藏下坐骑目标设定、到达目标附近等导航状态消息。");
+
         var showAutoNavigationStatusMessages = config.ShowAutoNavigationStatusMessages;
         if (ImGui.Checkbox("全自动提示", ref showAutoNavigationStatusMessages))
         {
             config.ShowAutoNavigationStatusMessages = showAutoNavigationStatusMessages;
             config.Save();
         }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("显示或隐藏全自动扫描、导航、回营地和自动进出岛的状态消息。");
+
+        ImGui.Separator();
+        if (ImGui.CollapsingHeader("地图识别设置"))
+            DrawTerritorySettings();
+    }
+
+    private unsafe void DrawChestCatalog(ExpeditionMap map)
+    {
+        ImGui.TextUnformatted($"{GetMapName(map)}内置宝箱坐标：{ChestCatalog.Get(map).Count} 个");
+        ImGui.TextDisabled("坐标来自 BOCCHIOK；类型按游戏 Treasure 表的 SGB.RowId 判定。");
+
+        var sortByDistance = config.SortChestCatalogByDistance;
+        if (ImGui.Checkbox("按距离排序", ref sortByDistance))
+        {
+            config.SortChestCatalogByDistance = sortByDistance;
+            if (sortByDistance)
+                config.SortChestCatalogByBocchiRoute = false;
+            config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("关闭时按宝箱 ID 顺序显示，方便逐个排查导航；开启时按距离玩家远近排序。");
 
         ImGui.SameLine();
-        var showRouteNavigationDebug = config.ShowRouteNavigationDebug;
-        if (ImGui.Checkbox("路线导航调试", ref showRouteNavigationDebug))
+        var sortByBocchiRoute = config.SortChestCatalogByBocchiRoute;
+        if (ImGui.Checkbox("推荐路线", ref sortByBocchiRoute))
         {
-            config.ShowRouteNavigationDebug = showRouteNavigationDebug;
+            config.SortChestCatalogByBocchiRoute = sortByBocchiRoute;
+            if (sortByBocchiRoute)
+                config.SortChestCatalogByDistance = false;
             config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("按 BOCCHIOK 的全局路线规划思路排序，减少局部来回绕路；关闭时按 ID 顺序显示。");
+
+        ImGui.Separator();
+
+        var windPoints = map == ExpeditionMap.North
+            ? ChestCatalog.NorthWindTeleportPoints
+            : Array.Empty<WindTeleportPosition>();
+        if (windPoints.Count > 0)
+        {
+            ImGui.TextUnformatted("额外导航目标");
+            foreach (var windPoint in windPoints)
+            {
+                ImGui.TextUnformatted($"{windPoint.Name} ({windPoint.Position.X:F1}, {windPoint.Position.Y:F1}, {windPoint.Position.Z:F1})");
+                if (vnav.IsReady)
+                {
+                    ImGui.SameLine();
+                    if (ImGui.SmallButton($"导航##wind-{map}-{windPoint.Name}"))
+                        vnav.NavigateDirectTo(windPoint.Position, fly: false);
+                }
+            }
+
+            ImGui.Separator();
         }
 
-        var showFloating = config.ShowFloatingStatusWindow;
-        if (ImGui.Checkbox("显示新月岛史官悬浮窗", ref showFloating))
+        var treasureSheet = DalamudApi.DataManager.GetExcelSheet<XIVTreasure>();
+        var playerPosition = DalamudApi.ObjectTable.LocalPlayer?.Position;
+        var chests = ChestCatalog.Get(map)
+            .Select(chest => new
+            {
+                Chest = chest,
+                Type = treasureSheet.GetRow((uint)chest.TreasureRowId).SGB.RowId switch
+                {
+                    1596 => "铜宝箱",
+                    1597 => "银宝箱",
+                    _ => "未知"
+                }
+            })
+            .ToList();
+
+        if (config.SortChestCatalogByDistance && playerPosition.HasValue)
+            chests = chests.OrderBy(chest => Vector3.DistanceSquared(playerPosition.Value, chest.Chest.Position)).ToList();
+        else if (config.SortChestCatalogByBocchiRoute && playerPosition.HasValue)
+            chests = OrderChestsByRecommendedRoute(chests, playerPosition.Value);
+        else
+            chests = chests.OrderBy(chest => chest.Chest.TreasureRowId).ToList();
+
+        foreach (var entry in chests)
         {
-            config.ShowFloatingStatusWindow = showFloating;
-            config.Save();
+            var chest = entry.Chest;
+            ImGui.TextUnformatted($"{entry.Type} #{chest.TreasureRowId} ({chest.Position.X:F1}, {chest.Position.Y:F1}, {chest.Position.Z:F1})");
+            if (vnav.IsReady)
+            {
+                ImGui.SameLine();
+                if (ImGui.SmallButton($"导航##catalog-chest-{map}-{chest.TreasureRowId}"))
+                {
+                    var resolvedMap = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, config);
+                    if (resolvedMap != map)
+                    {
+                        LogHelper.Chat($"当前地图不是{GetMapName(map)}，无法导航到该宝箱。");
+                    }
+                    else if (!vnav.IsReady)
+                    {
+                        LogHelper.Chat("vnavmesh 尚未准备好，无法开始宝箱导航。");
+                    }
+                    else
+                    {
+                        if (ChestCatalog.FloatingIslandChestIds.Contains(chest.TreasureRowId))
+                        {
+                            LogHelper.Chat($"宝箱 #{chest.TreasureRowId} 位于浮空岛，请通过风圈1-进或风圈2-进进入浮空岛再导航。", PluginMessageKind.Navigation);
+                        }
+                        else
+                        {
+                            LogHelper.Chat($"开始导航到宝箱 #{chest.TreasureRowId} ({chest.Position.X:F1}, {chest.Position.Y:F1}, {chest.Position.Z:F1})", PluginMessageKind.Navigation);
+                            vnav.NavigateDirectTo(chest.Position, fly: false);
+                        }
+                    }
+                }
+
+                ImGui.SameLine();
+                if (ImGui.SmallButton($"Flag##catalog-flag-{map}-{chest.TreasureRowId}"))
+                {
+                    var resolvedMap = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, config);
+                    if (resolvedMap != map)
+                    {
+                        LogHelper.Chat($"当前地图不是{GetMapName(map)}，无法标记该宝箱。");
+                    }
+                    else if (!TryGetMapId(DalamudApi.ClientState.TerritoryType, out var mapId))
+                    {
+                        LogHelper.Chat("无法读取当前地图 ID，无法标记宝箱。");
+                    }
+                    else
+                    {
+                        AgentMap.Instance()->SetFlagMapMarker(
+                            DalamudApi.ClientState.TerritoryType,
+                            mapId,
+                            chest.Position);
+                        LogHelper.Chat($"已标记宝箱 #{chest.TreasureRowId} ({chest.Position.X:F1}, {chest.Position.Y:F1}, {chest.Position.Z:F1})。");
+                    }
+                }
+            }
+        }
+    }
+
+    private static List<T> OrderChestsByRecommendedRoute<T>(IReadOnlyList<T> source, Vector3 start)
+        where T : notnull
+    {
+        if (source.Count <= 2)
+            return source.ToList();
+
+        var remaining = source.ToList();
+        var ordered = new List<T>(remaining.Count);
+
+        var firstIndex = 0;
+        var firstDistance = float.MaxValue;
+        for (var i = 0; i < remaining.Count; i++)
+        {
+            var chest = (dynamic)remaining[i]!;
+            var distance = Vector3.DistanceSquared(start, chest.Chest.Position);
+            if (distance < firstDistance)
+            {
+                firstIndex = i;
+                firstDistance = distance;
+            }
         }
 
-        ImGui.SameLine();
-        var lockFloating = config.LockFloatingStatusWindow;
-        if (ImGui.Checkbox("锁定悬浮窗", ref lockFloating))
+        ordered.Add(remaining[firstIndex]);
+        remaining.RemoveAt(firstIndex);
+
+        while (remaining.Count > 0)
         {
-            config.LockFloatingStatusWindow = lockFloating;
-            config.Save();
+            var bestCandidate = 0;
+            var bestInsertIndex = ordered.Count;
+            var bestIncrease = float.MaxValue;
+
+            for (var candidateIndex = 0; candidateIndex < remaining.Count; candidateIndex++)
+            {
+                var candidate = (dynamic)remaining[candidateIndex]!;
+                var candidatePosition = (Vector3)candidate.Chest.Position;
+
+                for (var insertIndex = 0; insertIndex <= ordered.Count; insertIndex++)
+                {
+                    var previousPosition = insertIndex == 0
+                        ? start
+                        : (Vector3)((dynamic)ordered[insertIndex - 1]!).Chest.Position;
+                    var nextPosition = insertIndex == ordered.Count
+                        ? (Vector3?)null
+                        : (Vector3)((dynamic)ordered[insertIndex]!).Chest.Position;
+
+                    var increase = Vector3.Distance(previousPosition, candidatePosition);
+                    if (nextPosition.HasValue)
+                    {
+                        increase += Vector3.Distance(candidatePosition, nextPosition.Value)
+                            - Vector3.Distance(previousPosition, nextPosition.Value);
+                    }
+
+                    if (increase < bestIncrease)
+                    {
+                        bestCandidate = candidateIndex;
+                        bestInsertIndex = insertIndex;
+                        bestIncrease = increase;
+                    }
+                }
+            }
+
+            ordered.Insert(bestInsertIndex, remaining[bestCandidate]);
+            remaining.RemoveAt(bestCandidate);
         }
+
+        return ordered;
     }
 
     private void DrawDebugSettings()
@@ -180,7 +439,6 @@ internal sealed class MainWindow : Window
             config.Save();
         }
 
-        ImGui.SameLine();
         var showNavigationDebug = config.ShowNavigationDebug;
         if (ImGui.Checkbox("导航调试", ref showNavigationDebug))
         {
@@ -188,8 +446,15 @@ internal sealed class MainWindow : Window
             config.Save();
         }
 
-        if (ImGui.Button("显示当前位置/新月岛史官目标距离"))
-            UpdateDistanceDebugLines();
+        var showRouteNavigationDebug = config.ShowRouteNavigationDebug;
+        if (ImGui.Checkbox("路线调试", ref showRouteNavigationDebug))
+        {
+            config.ShowRouteNavigationDebug = showRouteNavigationDebug;
+            config.Save();
+        }
+
+        if (ImGui.Button("输出当前位置/新月岛史官目标距离到聊天"))
+            PrintDistanceDebugToChat();
 
         ImGui.SameLine();
         if (ImGui.Button("复制全部调试信息"))
@@ -256,6 +521,38 @@ internal sealed class MainWindow : Window
 
         foreach (var target in targets)
             distanceDebugLines.Add($"{target.Type} #{target.Id} {target.Name}: 距离 {target.Distance:F1}，坐标 {FormatPosition(target.Pos)}");
+    }
+
+    private unsafe void PrintDistanceDebugToChat()
+    {
+        var player = DalamudApi.ObjectTable.LocalPlayer;
+        if (player == null)
+        {
+            LogHelper.Chat("[DEBUG] 未找到当前玩家对象。");
+            return;
+        }
+
+        LogHelper.Chat($"[DEBUG] 当前位置：{FormatPosition(player.Position)}");
+
+        var playerPos = player.Position;
+        var fates = DalamudApi.FateTable
+            .Where(fate => fate != null && DalamudApi.FateTable.IsValid(fate))
+            .Where(fate => fate!.State is FateState.Preparing or FateState.Running or FateState.Ending)
+            .Select(fate => fate!)
+            .Select(fate => (Type: "FATE", Id: (uint)fate.FateId, Name: fate.Name.TextValue, Pos: fate.Position, Distance: Vector3.Distance(playerPos, fate.Position)))
+            .ToList();
+
+        var content = PublicContentOccultCrescent.GetInstance();
+        var ces = content == null
+            ? []
+            : content->DynamicEventContainer.Events
+                .ToArray()
+                .Where(ev => ev.State != DynamicEventState.Inactive)
+                .Select(ev => (Type: "CE", Id: (uint)ev.DynamicEventId, Name: ev.Name.ToString(), Pos: ev.MapMarker.Position, Distance: Vector3.Distance(playerPos, ev.MapMarker.Position)))
+                .ToList();
+
+        foreach (var target in fates.Concat(ces).OrderBy(item => item.Distance))
+            LogHelper.Chat($"[DEBUG] {target.Type} #{target.Id} {target.Name}：距离 {target.Distance:F1}，坐标 {FormatPosition(target.Pos)}");
     }
 
     private static string FormatPosition(Vector3 pos)
@@ -1380,8 +1677,8 @@ internal sealed class MainWindow : Window
             PrintCurrentFatesToChat();
 
         ImGui.SameLine();
-        if (ImGui.Button("扫描附近 EventObj"))
-            ScanNearbyEventObjects();
+        if (ImGui.Button("扫描附近对象"))
+            ScanNearbyObjects();
 
         ImGui.SameLine();
         if (ImGui.Button("检测当前传送点"))
@@ -1459,7 +1756,7 @@ internal sealed class MainWindow : Window
             LogHelper.Chat($"还有 {lines.Length - 12} 条 FATE 未输出。 ");
     }
 
-    private static void ScanNearbyEventObjects()
+    private static void ScanNearbyObjects()
     {
         var player = DalamudApi.ObjectTable.LocalPlayer;
         if (player == null) return;
@@ -1468,18 +1765,18 @@ internal sealed class MainWindow : Window
         var count = 0;
         foreach (var obj in DalamudApi.ObjectTable)
         {
-            if (obj == null || obj.ObjectKind != Dalamud.Game.ClientState.Objects.Enums.ObjectKind.EventObj)
+            if (obj == null || !obj.IsValid())
                 continue;
 
             var dist = Vector3.Distance(playerPos, obj.Position);
             if (dist > 50f) continue;
 
-            LogHelper.Chat($"EventObj: BaseId={obj.BaseId} Name={obj.Name} Pos=({obj.Position.X:F2}, {obj.Position.Y:F2}, {obj.Position.Z:F2})");
+            LogHelper.Chat($"对象: Kind={obj.ObjectKind} BaseId={obj.BaseId} Name={obj.Name.TextValue} Pos=({obj.Position.X:F2}, {obj.Position.Y:F2}, {obj.Position.Z:F2})");
             count++;
         }
 
         if (count == 0)
-            LogHelper.Chat("附近 50 码内没有 EventObj。");
+            LogHelper.Chat("附近 50 码内没有有效对象。");
     }
 
     private static string FormatEpoch(int epoch)

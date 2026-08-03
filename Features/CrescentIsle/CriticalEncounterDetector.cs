@@ -67,7 +67,7 @@ internal sealed class CriticalEncounterDetector
                 continue;
 
             state.RecordAppearance(boss, appearedAt);
-            LogHelper.Chat($"自动记录 {boss.Abbreviation} 出现时间。");
+            LogHelper.Chat($"{boss.Abbreviation} 出现时间。", PluginMessageKind.AutoRecord);
         }
     }
 
