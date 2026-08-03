@@ -17,6 +17,7 @@ internal sealed class MainWindow : Window
     private readonly CrescentStateService state;
     private readonly VnavService vnav;
     private readonly InstancePopulationProvider populationProvider;
+    private readonly CrescentMapMarkerController mapMarkers;
     private string sharedText = string.Empty;
     private string statusText = string.Empty;
     private string southTerritoriesText;
@@ -28,13 +29,14 @@ internal sealed class MainWindow : Window
     private int routeSelectedCeRouteIndex;
     private int routeSelectedFateRouteIndex;
 
-    public MainWindow(PluginConfiguration config, CrescentStateService state, VnavService vnav, InstancePopulationProvider populationProvider)
+    public MainWindow(PluginConfiguration config, CrescentStateService state, VnavService vnav, InstancePopulationProvider populationProvider, CrescentMapMarkerController mapMarkers)
         : base($"新月岛史官 v{GetVersionText()}")
     {
         this.config = config;
         this.state = state;
         this.vnav = vnav;
         this.populationProvider = populationProvider;
+        this.mapMarkers = mapMarkers;
         NormalizeTerritoryIds();
         southTerritoriesText = FormatTerritoryIds(config.SouthTerritoryIds);
         northTerritoriesText = FormatTerritoryIds(config.NorthTerritoryIds);
@@ -75,6 +77,12 @@ internal sealed class MainWindow : Window
         if (ImGui.BeginTabItem("宝箱"))
         {
             DrawChestCatalog(config.LastSelectedMap);
+            ImGui.EndTabItem();
+        }
+
+        if (ImGui.BeginTabItem("地图"))
+        {
+            DrawMapMarkers();
             ImGui.EndTabItem();
         }
 
@@ -358,6 +366,41 @@ internal sealed class MainWindow : Window
                 }
             }
         }
+    }
+
+    private void DrawMapMarkers()
+    {
+        ImGui.TextUnformatted("新月岛地图标记");
+        ImGui.TextDisabled("标记通过 KamiToolKit.MapOverlay 绘制，支持北征浮空岛和地下区域。仅在新月岛内生效。");
+        ImGui.Separator();
+
+        var changed = false;
+        changed |= ImGui.Checkbox("显示铜宝箱", ref config.ShowMapBronzeChestMarkers);
+        changed |= ImGui.Checkbox("显示银宝箱", ref config.ShowMapSilverChestMarkers);
+        changed |= ImGui.Checkbox("显示胡萝卜", ref config.ShowMapCarrotMarkers);
+        changed |= ImGui.Checkbox("显示魔法罐", ref config.ShowMapMagicPotMarkers);
+        changed |= ImGui.Checkbox("显示第二次机会宝箱", ref config.ShowMapRerollMarkers);
+        changed |= ImGui.Checkbox("显示调查点", ref config.ShowMapSurveyMarkers);
+        ImGui.Separator();
+        changed |= ImGui.Checkbox("接近宝箱/胡萝卜时提示", ref config.NotifyNearbyMapResources);
+        changed |= ImGui.Checkbox("接近宝箱/胡萝卜时自动 Flag", ref config.FlagNearbyMapResources);
+        changed |= ImGui.Checkbox("地图顶部显示快速切换图标", ref config.ShowMapMarkerSwitcher);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("仅对当前实际出现、距离 80 以内的铜宝箱、银宝箱或胡萝卜生效。");
+
+        if (changed)
+        {
+            config.ShowMapChestMarkers = config.ShowMapBronzeChestMarkers || config.ShowMapSilverChestMarkers;
+            config.ShowMapNorthMagicPotMarkers = config.ShowMapMagicPotMarkers;
+            config.ShowMapSouthMagicPotMarkers = config.ShowMapMagicPotMarkers;
+            config.Save();
+            mapMarkers.Refresh();
+            mapMarkers.RefreshProximity();
+        }
+
+        ImGui.Separator();
+        if (ImGui.Button("刷新地图标记"))
+            mapMarkers.Refresh();
     }
 
     private static List<T> OrderChestsByRecommendedRoute<T>(IReadOnlyList<T> source, Vector3 start)

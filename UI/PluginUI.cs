@@ -7,18 +7,22 @@ internal sealed class PluginUI : IDisposable
     private readonly WindowSystem windowSystem = new("Chronicler");
     private readonly MainWindow mainWindow;
     private readonly FloatingStatusWindow floatingStatusWindow;
+    private readonly MapMarkerSwitcherWindow mapMarkerSwitcherWindow;
 
-    public PluginUI(PluginConfiguration config, CrescentStateService state, VnavService vnav, CurrencyGainTracker currencyGainTracker, InstancePopulationProvider populationProvider)
+    public PluginUI(PluginConfiguration config, CrescentStateService state, VnavService vnav, CurrencyGainTracker currencyGainTracker, InstancePopulationProvider populationProvider, CrescentMapMarkerController mapMarkers)
     {
-        mainWindow = new MainWindow(config, state, vnav, populationProvider);
+        mainWindow = new MainWindow(config, state, vnav, populationProvider, mapMarkers);
         floatingStatusWindow = new FloatingStatusWindow(config, state, ToggleMainWindow, vnav, currencyGainTracker);
+        mapMarkerSwitcherWindow = new MapMarkerSwitcherWindow(config, mapMarkers);
         windowSystem.AddWindow(mainWindow);
         windowSystem.AddWindow(floatingStatusWindow);
+        windowSystem.AddWindow(mapMarkerSwitcherWindow);
     }
 
     public void Draw()
     {
         floatingStatusWindow.IsOpen = floatingStatusWindow.ShouldBeOpen;
+        mapMarkerSwitcherWindow.UpdateVisibility();
         windowSystem.Draw();
     }
 

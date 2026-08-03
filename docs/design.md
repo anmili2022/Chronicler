@@ -42,6 +42,23 @@ BOCCHI 还监听 `_WideText` 插件的消息 `10965`，从游戏文本初始化�
 胡萝卜：ObjectKind.EventObj + BaseId == 2010139
 ```
 
+地图标记坐标还参考 `EurekaTrackerAutoPopper/OccultChests.cs`（MIT License），并保留源项目归属说明。
+
+### 地图标记
+
+- `CrescentMapMarkerController` 管理新月岛标记，类别包括铜宝箱、银宝箱、魔法罐、第二次机会宝箱、胡萝卜和调查点。铜/银宝箱必须保持独立开关；魔法罐的南征/北征搜索点由同一个开关控制。
+- `KamiToolKit.MapOverlay` 用于北征浮空岛、地下区域等跨子地图覆盖标记；插件加载时必须先调用 `KamiToolKitLibrary.Initialize(pluginInterface, pluginName)`，卸载时在控制器释放后调用 `KamiToolKitLibrary.Dispose()`。
+- 若覆盖层不可用，当前已打开的子地图仍通过 `AgentMap.AddMapMarker` 和 `AddMiniMapMarker` 显示标记。覆盖层或单个节点异常不得中断 `IFramework.Update`。
+- 每次刷新需清除本控制器放置的原生地图/小地图标记后再重绘，以便关闭类别立即生效。
+- `MapMarkerSwitcherWindow` 仅在新月岛且 `AreaMap` 可见时显示在地图上方。按钮顺序为铜、银、魔法罐、第二次机会宝箱、胡萝卜、调查点；绿色表示启用，灰色表示禁用。
+- 设置页的“地图”页签提供类别、快速切换条、接近提示和自动 Flag 开关。
+
+### 地图提示与 Flag
+
+- 接近实际加载的铜宝箱、银宝箱或胡萝卜（80 距离内）时，可显示 `[地图提示] 附近发现...`；该消息不属于导航通知。
+- 自动 Flag 启用时，先清除当前 Flag，再调用 `AgentMap.SetFlagMapMarker(ClientState.TerritoryType, ClientState.MapId, position)`。必须使用运行时 `ClientState.MapId`，不能用固定南/北主地图 ID，否则北征地下等子地图会失败。
+- 修改接近提示或自动 Flag 开关后应清除资源提示缓存，允许当前附近对象立即重新触发。
+
 ## 掉落标记
 
 - 北征 CE 使用 `α β γ`（对应 xyd 网页 `typeLabel`）。

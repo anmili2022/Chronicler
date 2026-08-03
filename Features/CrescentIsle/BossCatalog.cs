@@ -40,8 +40,8 @@ internal static class BossCatalog
         CreateCe(ExpeditionMap.North, 113, 12, "提蔛", "四颚斧花--提蔛", "Lv.46 新月瓦魔蛾 x:4.0, y:10.2", "α"),
         CreateCe(ExpeditionMap.North, 114, 13, "赤龙", "暗红尸骸--赤龙", "Lv.34 新月大角牛 x:7.7, y:24.4", "β", "暗红尸骸"),
         CreateCe(ExpeditionMap.North, 115, 14, "阿剌克涅", "残暴的母蜘蛛--新月阿剌克涅", "Lv.39 新月地狱犬 x:24.8, y:18.6", "α", "新月阿剌克涅"),
-        CreateFate(ExpeditionMap.North, 116, 15, 2073, "左下罐", "被吹飞的魔法罐（左下罐）", "自然刷新 x:11.3, y:26.2", "消幻晶β ×3 / 调查记录：撒娇罐", "被吹飞的魔法罐"),
-        CreateFate(ExpeditionMap.North, 117, 16, 2072, "右上罐", "被欺负的魔法罐（右上罐）", "自然刷新 x:26.1, y:12.1", "消幻晶γ ×3 / 调查记录：撒娇罐", "被欺负的魔法罐"),
+        CreateFate(ExpeditionMap.North, 116, 15, 2073, "左下罐", "被吹飞的魔法罐（左下罐）", "自然刷新 x:11.3, y:26.2", "β", "被吹飞的魔法罐"),
+        CreateFate(ExpeditionMap.North, 117, 16, 2072, "右上罐", "被欺负的魔法罐（右上罐）", "自然刷新 x:26.1, y:12.1", "γ", "被欺负的魔法罐"),
     ];
 
     private static readonly IReadOnlyList<BossEntry> ExtraNorthFates =
@@ -89,7 +89,7 @@ internal static class BossCatalog
 
         return bosses.FirstOrDefault(boss =>
             boss.ObjectNameAliases.Any(alias => eventName.StartsWith(alias, StringComparison.Ordinal))
-            || boss.Name.Equals(eventName, StringComparison.Ordinal));
+            || NormalizeEventName(boss.Name).Equals(NormalizeEventName(eventName), StringComparison.Ordinal));
     }
 
     public static bool MatchesCriticalEncounter(BossEntry boss, uint dynamicEventId, string eventName)
@@ -104,7 +104,7 @@ internal static class BossCatalog
             return false;
 
         return boss.ObjectNameAliases.Any(alias => eventName.StartsWith(alias, StringComparison.Ordinal))
-               || boss.Name.Equals(eventName, StringComparison.Ordinal);
+               || NormalizeEventName(boss.Name).Equals(NormalizeEventName(eventName), StringComparison.Ordinal);
     }
 
     public static bool IsMagicPot(BossEntry boss)
@@ -137,4 +137,9 @@ internal static class BossCatalog
         var asciiDashIndex = name.LastIndexOf("--", StringComparison.Ordinal);
         return asciiDashIndex >= 0 && asciiDashIndex + 2 < name.Length ? name[(asciiDashIndex + 2)..] : name;
     }
+
+    private static string NormalizeEventName(string name)
+        => name.Replace("—", string.Empty, StringComparison.Ordinal)
+            .Replace("-", string.Empty, StringComparison.Ordinal)
+            .Trim();
 }

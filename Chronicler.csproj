@@ -2,7 +2,7 @@
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
 
   <PropertyGroup>
-    <AssemblyVersion>0.2.0.20</AssemblyVersion>
+    <AssemblyVersion>0.2.0.21</AssemblyVersion>
     <InternalName>Chronicler</InternalName>
     <RootNamespace>Chronicler</RootNamespace>
     <Description>Local Crescent Isle historian with xyd.zzmelon.com share-code and shout compatibility.</Description>
@@ -31,6 +31,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="KamiToolKit" Version="2.0.23" />
     <None Include="images\icon.png" CopyToOutputDirectory="PreserveNewest" />
     <Reference Include="Dalamud" HintPath="$(DalamudLibPath)Dalamud.dll" Private="false" />
     <Reference Include="Dalamud.Bindings.ImGui" HintPath="$(DalamudLibPath)Dalamud.Bindings.ImGui.dll" Private="false" />

@@ -542,6 +542,9 @@ internal sealed class FloatingStatusWindow : Window
             ImGui.PopStyleColor();
             var dropMark = (boss?.Drop ?? string.Empty) switch
             {
+                "α" => "α",
+                "β" => "β",
+                "γ" => "γ",
                 var reward when reward.StartsWith("消幻晶α", StringComparison.Ordinal) => "α",
                 var reward when reward.StartsWith("消幻晶β", StringComparison.Ordinal) => "β",
                 var reward when reward.StartsWith("消幻晶γ", StringComparison.Ordinal) => "γ",

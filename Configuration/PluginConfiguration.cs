@@ -10,7 +10,7 @@ public sealed class PluginConfiguration : IPluginConfiguration
     [NonSerialized]
     private IDalamudPluginInterface? pluginInterface;
 
-    public int Version { get; set; } = 5;
+    public int Version { get; set; } = 8;
     public bool Enabled = true;
     public bool ListenChat = true;
     public bool AutoDetectAppearances = true;
@@ -52,6 +52,18 @@ public sealed class PluginConfiguration : IPluginConfiguration
     public bool ShowFloatingCarrotCount = false;
     public bool SortChestCatalogByDistance = false;
     public bool SortChestCatalogByBocchiRoute = false;
+    public bool ShowMapChestMarkers = true;
+    public bool ShowMapBronzeChestMarkers = true;
+    public bool ShowMapSilverChestMarkers = true;
+    public bool ShowMapCarrotMarkers = false;
+    public bool ShowMapMagicPotMarkers = false;
+    public bool ShowMapNorthMagicPotMarkers = false;
+    public bool ShowMapSouthMagicPotMarkers = false;
+    public bool ShowMapRerollMarkers = false;
+    public bool ShowMapSurveyMarkers = false;
+    public bool NotifyNearbyMapResources = true;
+    public bool FlagNearbyMapResources = false;
+    public bool ShowMapMarkerSwitcher = true;
     public XivChatType MessageChatType = XivChatType.Echo;
     public ExpeditionMap LastSelectedMap = ExpeditionMap.South;
     public string LastIslandId = string.Empty;
@@ -112,6 +124,27 @@ public sealed class PluginConfiguration : IPluginConfiguration
             SortChestCatalogByDistance = false;
             SortChestCatalogByBocchiRoute = false;
             Version = 5;
+            Save();
+        }
+
+        if (Version < 7)
+        {
+            ShowMapChestMarkers = true;
+            ShowMapCarrotMarkers = false;
+            ShowMapMagicPotMarkers = false;
+            ShowMapRerollMarkers = false;
+            ShowMapSurveyMarkers = false;
+            NotifyNearbyMapResources = true;
+            FlagNearbyMapResources = false;
+            Version = 7;
+            Save();
+        }
+
+        if (Version < 8)
+        {
+            ShowMapBronzeChestMarkers = ShowMapChestMarkers;
+            ShowMapSilverChestMarkers = ShowMapChestMarkers;
+            Version = 8;
             Save();
         }
     }

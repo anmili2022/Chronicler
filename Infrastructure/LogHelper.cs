@@ -5,6 +5,7 @@ internal enum PluginMessageKind
     General,
     AutoRecord,
     Navigation,
+    MapNotification,
     AutoNavigation,
     NavigationDebug,
     RouteDebug,
@@ -39,6 +40,7 @@ internal static class LogHelper
     {
         PluginMessageKind.AutoRecord => config?.ShowAutoRecordMessages != false,
         PluginMessageKind.Navigation => config?.ShowNavigationMessages != false,
+        PluginMessageKind.MapNotification => true,
         PluginMessageKind.AutoNavigation => config?.ShowAutoNavigationStatusMessages != false,
         PluginMessageKind.NavigationDebug => config?.ShowNavigationDebug == true,
         PluginMessageKind.RouteDebug => config?.ShowRouteNavigationDebug == true,
@@ -49,6 +51,7 @@ internal static class LogHelper
     {
         PluginMessageKind.AutoRecord => $"[自动记录] {message}",
         PluginMessageKind.Navigation => $"[导航通知] {message}",
+        PluginMessageKind.MapNotification => $"[地图提示] {message}",
         PluginMessageKind.AutoNavigation => $"[全自动] {message}",
         PluginMessageKind.NavigationDebug => $"[导航调试] {message}",
         PluginMessageKind.RouteDebug => $"[路线调试] {message}",

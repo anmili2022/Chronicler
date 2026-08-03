@@ -1,4 +1,5 @@
 using Dalamud.Plugin;
+using KamiToolKit;
 
 namespace Chronicler;
 
@@ -11,6 +12,7 @@ public sealed partial class ChroniclerPlugin : IDalamudPlugin
     private readonly CriticalEncounterDetector criticalEncounterDetector;
     private readonly CurrencyGainTracker currencyGainTracker;
     private readonly VnavService vnav;
+    private readonly CrescentMapMarkerController mapMarkers;
     private readonly PluginUI ui;
     private bool isDisposing;
     private DateTime lastFrameworkErrorUtc = DateTime.MinValue;
@@ -45,6 +47,7 @@ public sealed partial class ChroniclerPlugin : IDalamudPlugin
     {
         this.pluginInterface = pluginInterface;
         DalamudApi.Initialize(pluginInterface);
+        KamiToolKitLibrary.Initialize(pluginInterface, Name);
 
         Configuration = pluginInterface.GetPluginConfig() as PluginConfiguration ?? new PluginConfiguration();
         Configuration.Initialize(pluginInterface);
@@ -55,7 +58,8 @@ public sealed partial class ChroniclerPlugin : IDalamudPlugin
         criticalEncounterDetector = new CriticalEncounterDetector(stateService);
         currencyGainTracker = new CurrencyGainTracker();
         vnav = new VnavService(pluginInterface, Configuration);
-        ui = new PluginUI(Configuration, stateService, vnav, currencyGainTracker, instancePopulationProvider);
+        mapMarkers = new CrescentMapMarkerController(Configuration);
+        ui = new PluginUI(Configuration, stateService, vnav, currencyGainTracker, instancePopulationProvider, mapMarkers);
 
         RegisterCommands();
         RegisterChatHandlers();
@@ -77,7 +81,9 @@ public sealed partial class ChroniclerPlugin : IDalamudPlugin
         UnregisterChatHandlers();
         UnregisterCommands();
         ui.Dispose();
+        mapMarkers.Dispose();
         vnav.Dispose();
+        KamiToolKitLibrary.Dispose();
         Configuration.Save();
     }
 }
