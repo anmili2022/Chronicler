@@ -569,7 +569,7 @@ internal sealed class FloatingStatusWindow : Window
             var bossRoutes = boss != null && currentMap.HasValue
                 ? RouteCatalog.GetRoutes(currentMap.Value, boss.Id, config)
                 : null;
-            DrawFlagNavButton(fate.Position, $"fate-{fate.FateId}", VnavService.GetPreferredShardIdForFate(fate.FateId), dismountOnArrival: true, routes: bossRoutes);
+            DrawFlagNavButton(fate.Position, $"fate-{fate.FateId}", VnavService.GetPreferredShardIdForFate(fate.FateId), config.FateNavigationRandomOffset > 0 ? config.FateNavigationRandomOffset : null, dismountOnArrival: true, routes: bossRoutes);
         }
 
         return true;
@@ -624,7 +624,7 @@ internal sealed class FloatingStatusWindow : Window
             var ceRoutes = boss != null && currentMap.HasValue
                 ? RouteCatalog.GetRoutes(currentMap.Value, boss.Id, config)
                 : null;
-            DrawFlagNavButton(ev.MapMarker.Position, $"ce-{ev.DynamicEventId}", boss == null ? null : VnavService.GetPreferredShardIdForCriticalEncounter(currentMap!.Value, boss.Index), ev.MapMarker.Radius, dismountOnArrival: boss != null && VnavService.RollCriticalEncounterDismount(), routes: ceRoutes);
+            DrawFlagNavButton(ev.MapMarker.Position, $"ce-{ev.DynamicEventId}", boss == null ? null : VnavService.GetPreferredShardIdForCriticalEncounter(currentMap!.Value, boss.Index), config.CeNavigationRandomOffset > 0 ? config.CeNavigationRandomOffset : null, dismountOnArrival: boss != null && VnavService.RollCriticalEncounterDismount(), routes: ceRoutes);
         }
 
         return true;

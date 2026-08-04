@@ -54,6 +54,13 @@ internal sealed class VnavService : IDisposable
         (ExpeditionMap.North, new Vector3(-13.36f, 3.14f, -40.51f), 69420410, false),   // 妖火渔村
     };
 
+    private static readonly Vector3[] NorthCampApproachPoints =
+    [
+        new(878.3f, 258.5f, 881.6f),
+        new(882.1f, 258.5f, 882.2f),
+        new(881.6f, 258.5f, 878.3f),
+    ];
+
     public VnavService(IDalamudPluginInterface pi, PluginConfiguration config)
     {
         pluginInterface = pi;
@@ -896,7 +903,7 @@ internal sealed class VnavService : IDisposable
     private Vector3 PickRandomPointInRadius(Vector3 center, float radius)
     {
         var capped = radius > 0f ? radius : 15f;
-        var safeRadius = Math.Min(15f, Math.Max(1f, capped));
+        var safeRadius = Math.Min(30f, Math.Max(1f, capped));
         for (var i = 0; i < 16; i++)
         {
             var angle = Random.Shared.NextDouble() * Math.Tau;
@@ -1345,6 +1352,9 @@ internal sealed class VnavService : IDisposable
     private static (Vector3 Pos, uint Id, bool IsPlaceNameId)? GetCampShard(ExpeditionMap map)
     {
         var camp = Shards.FirstOrDefault(s => s.Map == map);
+        if (map == ExpeditionMap.North)
+            return (NorthCampApproachPoints[Random.Shared.Next(NorthCampApproachPoints.Length)], camp.Id, camp.IsPlaceNameId);
+
         return (camp.Pos, camp.Id, camp.IsPlaceNameId);
     }
 

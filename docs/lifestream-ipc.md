@@ -149,6 +149,8 @@ private void ProcessRoute()
 | 北征 | 腐坏的街道前 | 69420409 | (-388.57, 41.22, -440.52) |
 | 北征 | 妖火渔村 | 69420410 | (-13.36, 3.14, -40.51) |
 
+北征营地水晶的接近点使用以下 3 个实测坐标随机选择：`(878.3, 258.5, 881.6)`、`(882.1, 258.5, 882.2)`、`(881.6, 258.5, 878.3)`。这些坐标只用于寻路接近营地水晶，实际传送仍使用 `69420405`。
+
 南征使用 `AethernetTeleportByPlaceNameId`（PlaceNameId），北征使用 `AethernetTeleportById`（自定义 AetheryteId）。
 
 ## TerritoryType

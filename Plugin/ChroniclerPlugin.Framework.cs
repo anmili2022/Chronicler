@@ -392,7 +392,7 @@ public sealed partial class ChroniclerPlugin
             }
 
             LogHelper.Chat($"匹配到 {boss.Abbreviation}(FateId={fateId}), 开始导航", PluginMessageKind.NavigationDebug);
-            NavigateAutoTargetOnce(key, $"FATE {boss.Abbreviation}", match.Position, VnavService.GetPreferredShardIdForFate(match.FateId), null, dismountOnArrival: true, boss);
+            NavigateAutoTargetOnce(key, $"FATE {boss.Abbreviation}", match.Position, VnavService.GetPreferredShardIdForFate(match.FateId), Configuration.FateNavigationRandomOffset > 0 ? Configuration.FateNavigationRandomOffset : null, dismountOnArrival: true, boss);
             return true;
         }
 
@@ -427,7 +427,7 @@ public sealed partial class ChroniclerPlugin
             if (activeAutoNavigationKey != key && ShouldSkipAutoTarget(ev.State == DynamicEventState.Battle, ev.Progress))
                 continue;
 
-            NavigateAutoTargetOnce(key, $"CE {boss.Abbreviation}", ev.MapMarker.Position, VnavService.GetPreferredShardIdForCriticalEncounter(map, boss.Index), ev.MapMarker.Radius, dismountOnArrival: VnavService.RollCriticalEncounterDismount(), boss: boss);
+            NavigateAutoTargetOnce(key, $"CE {boss.Abbreviation}", ev.MapMarker.Position, VnavService.GetPreferredShardIdForCriticalEncounter(map, boss.Index), Configuration.CeNavigationRandomOffset > 0 ? Configuration.CeNavigationRandomOffset : null, dismountOnArrival: VnavService.RollCriticalEncounterDismount(), boss: boss);
             return true;
         }
 
@@ -442,21 +442,20 @@ public sealed partial class ChroniclerPlugin
         if (activeAutoNavigationKey == key)
             return;
 
-        var startDelaySeconds = Math.Max(0, Configuration.AutoNavigationStartDelaySeconds);
-        if (startDelaySeconds > 0)
+        if (pendingAutoNavigationKey != key)
         {
-            var now = DateTime.UtcNow;
-            if (pendingAutoNavigationKey != key)
+            var startDelaySeconds = RandomizeAutoDelay(Configuration.AutoNavigationStartDelaySeconds);
+            if (startDelaySeconds > 0)
             {
                 pendingAutoNavigationKey = key;
-                pendingAutoNavigationDueUtc = now + TimeSpan.FromSeconds(startDelaySeconds);
+                pendingAutoNavigationDueUtc = DateTime.UtcNow + TimeSpan.FromSeconds(startDelaySeconds);
                 LogHelper.Chat($"发现 {label}，{startDelaySeconds} 秒后导航。", PluginMessageKind.AutoNavigation);
                 return;
             }
-
-            if (pendingAutoNavigationDueUtc.HasValue && now < pendingAutoNavigationDueUtc.Value)
-                return;
         }
+
+        if (pendingAutoNavigationDueUtc.HasValue && DateTime.UtcNow < pendingAutoNavigationDueUtc.Value)
+            return;
 
         ClearPendingAutoNavigation();
         ClearPendingStandbyNavigation();
@@ -496,9 +495,9 @@ public sealed partial class ChroniclerPlugin
             return;
 
         var now = DateTime.UtcNow;
-        var delaySeconds = Math.Max(0, Configuration.AutoReturnDelaySeconds);
         if (!autoReturnDueUtc.HasValue)
         {
+            var delaySeconds = RandomizeAutoDelay(Configuration.AutoReturnDelaySeconds);
             autoReturnDueUtc = now + TimeSpan.FromSeconds(delaySeconds);
             vnav.Stop();
             LogHelper.Chat(delaySeconds > 0 ? $"目标已结束，延迟 {delaySeconds} 秒后回营地。" : "目标已结束，回营地等待下一次。", PluginMessageKind.AutoNavigation);
@@ -523,6 +522,12 @@ public sealed partial class ChroniclerPlugin
             pendingStandbyNavStartedUtc = DateTime.UtcNow;
             pendingStandbyNavUtc = DateTime.UtcNow + TimeSpan.FromSeconds(8);
         }
+    }
+
+    private static int RandomizeAutoDelay(int configuredSeconds)
+    {
+        var delay = Math.Max(0, configuredSeconds);
+        return delay == 0 ? 0 : Math.Max(0, delay + Random.Shared.Next(-1, 2));
     }
 
     private void ProcessStandbyNavigation()

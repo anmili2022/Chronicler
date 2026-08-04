@@ -151,6 +151,15 @@ internal sealed class MainWindow : Window
         ImGui.TextUnformatted($"已解锁：南征 {southUnlocked}/30，北征 {northUnlocked}/30，总计 {southUnlocked + northUnlocked}/60");
         ImGui.TextDisabled("数据来源：最终幻想 XIV 中文维基。CE 名称后的 [笔] 表示该 CE 会获得调查笔记。");
 
+        var linkInvestigationNotes = config.LinkInvestigationNotesToFloatingWindow;
+        if (ImGui.Checkbox("与悬浮窗联动", ref linkInvestigationNotes))
+        {
+            config.LinkInvestigationNotesToFloatingWindow = linkInvestigationNotes;
+            config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("开启后，悬浮窗中已解锁调查笔记对应的 CE 不再显示 [笔] 标签。");
+
         if (!ImGui.BeginTable("##investigation_notes", 2, ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchSame))
             return;
 
@@ -300,15 +309,6 @@ internal sealed class MainWindow : Window
         }
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("探测当前地图已加载的胡萝卜，并在悬浮窗显示数量和导航按钮。");
-
-        var linkInvestigationNotes = config.LinkInvestigationNotesToFloatingWindow;
-        if (ImGui.Checkbox("调查笔记联动", ref linkInvestigationNotes))
-        {
-            config.LinkInvestigationNotesToFloatingWindow = linkInvestigationNotes;
-            config.Save();
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("开启后，悬浮窗中已解锁调查笔记对应的 CE 不再显示 [笔] 标签。");
 
         ImGui.Separator();
         ImGui.AlignTextToFramePadding();
@@ -919,8 +919,8 @@ internal sealed class MainWindow : Window
             }
             ImGui.TextDisabled("战斗进度 >= X% 时不再前往新目标");
 
-            ImGui.EndTable();
-
+            ImGui.TableNextRow();
+            ImGui.TableSetColumnIndex(0);
             ImGui.TextUnformatted("传送阈值（码）");
             ImGui.SetNextItemWidth(110f);
             var teleportThreshold = Math.Max(0, config.AutoNavigationTeleportThreshold);
@@ -930,6 +930,30 @@ internal sealed class MainWindow : Window
                 config.Save();
             }
             ImGui.TextDisabled("玩家距目标 + 阈值 > 目标最近水晶距目标 时先回营地再传送");
+
+            ImGui.TableSetColumnIndex(1);
+            ImGui.TextUnformatted("CE 导航偏移（码）");
+            ImGui.SetNextItemWidth(110f);
+            var ceNavigationRandomOffset = Math.Max(0f, config.CeNavigationRandomOffset);
+            if (ImGui.InputFloat("##ce_navigation_random_offset", ref ceNavigationRandomOffset, 1f, 5f, "%.1f"))
+            {
+                config.CeNavigationRandomOffset = Math.Clamp(ceNavigationRandomOffset, 0f, 30f);
+                config.Save();
+            }
+            ImGui.TextDisabled("以 CE 中心点为圆心随机选择最终落点；设为 0 关闭偏移");
+
+            ImGui.TableSetColumnIndex(2);
+            ImGui.TextUnformatted("FATE 导航偏移（码）");
+            ImGui.SetNextItemWidth(110f);
+            var fateNavigationRandomOffset = Math.Max(0f, config.FateNavigationRandomOffset);
+            if (ImGui.InputFloat("##fate_navigation_random_offset", ref fateNavigationRandomOffset, 1f, 5f, "%.1f"))
+            {
+                config.FateNavigationRandomOffset = Math.Clamp(fateNavigationRandomOffset, 0f, 30f);
+                config.Save();
+            }
+            ImGui.TextDisabled("以 FATE 中心点为圆心随机选择最终落点；设为 0 关闭偏移");
+
+            ImGui.EndTable();
         }
 
         DrawAutoIslandRotationSettings();

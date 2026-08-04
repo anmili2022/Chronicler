@@ -29,6 +29,8 @@ public sealed class PluginConfiguration : IPluginConfiguration
     public int AutoReturnDelaySeconds = 5;
     public int AutoNavigationTeleportThreshold = 100;
     public int AutoSkipProgressPercent = 80;
+    public float CeNavigationRandomOffset = 15f;
+    public float FateNavigationRandomOffset = 15f;
     public bool AutoPrioritizeCe = true;
     public float AutoReturnStandbyX = 0;
     public float AutoReturnStandbyY = 0;
