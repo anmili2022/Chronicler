@@ -31,7 +31,7 @@ public sealed partial class ChroniclerPlugin : IDalamudPlugin
     private bool pendingAutoReturnSawBetweenAreas;
     private int pendingAutoReturnRetryCount;
     private bool wasDead;
-    private DateTime? postReturnIdleUtc;
+    private DateTime? postReturnScanDueUtc;
     private bool autoNavWasEnabled;
     private bool autoIslandCycleActive;
     private bool autoIslandReentryStarted;

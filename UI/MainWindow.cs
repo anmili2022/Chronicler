@@ -921,6 +921,17 @@ internal sealed class MainWindow : Window
 
             ImGui.TableNextRow();
             ImGui.TableSetColumnIndex(0);
+            ImGui.TextUnformatted("回营后扫描延迟");
+            ImGui.SetNextItemWidth(110f);
+            var autoReturnScanDelaySeconds = Math.Max(0, config.AutoReturnScanDelaySeconds);
+            if (ImGui.InputInt("秒##auto_return_scan_delay", ref autoReturnScanDelaySeconds))
+            {
+                config.AutoReturnScanDelaySeconds = Math.Clamp(autoReturnScanDelaySeconds, 0, 600);
+                config.Save();
+            }
+            ImGui.TextDisabled("回到营地后等待 X 秒再扫描目标");
+
+            ImGui.TableSetColumnIndex(1);
             ImGui.TextUnformatted("传送阈值（码）");
             ImGui.SetNextItemWidth(110f);
             var teleportThreshold = Math.Max(0, config.AutoNavigationTeleportThreshold);
@@ -931,7 +942,7 @@ internal sealed class MainWindow : Window
             }
             ImGui.TextDisabled("玩家距目标 + 阈值 > 目标最近水晶距目标 时先回营地再传送");
 
-            ImGui.TableSetColumnIndex(1);
+            ImGui.TableSetColumnIndex(2);
             ImGui.TextUnformatted("CE 导航偏移（码）");
             ImGui.SetNextItemWidth(110f);
             var ceNavigationRandomOffset = Math.Max(0f, config.CeNavigationRandomOffset);
@@ -942,7 +953,8 @@ internal sealed class MainWindow : Window
             }
             ImGui.TextDisabled("以 CE 中心点为圆心随机选择最终落点；设为 0 关闭偏移");
 
-            ImGui.TableSetColumnIndex(2);
+            ImGui.TableNextRow();
+            ImGui.TableSetColumnIndex(0);
             ImGui.TextUnformatted("FATE 导航偏移（码）");
             ImGui.SetNextItemWidth(110f);
             var fateNavigationRandomOffset = Math.Max(0f, config.FateNavigationRandomOffset);

@@ -27,6 +27,7 @@ public sealed class PluginConfiguration : IPluginConfiguration
     public ExpeditionMap AutoIslandTargetMap = ExpeditionMap.North;
     public int AutoNavigationStartDelaySeconds = 5;
     public int AutoReturnDelaySeconds = 5;
+    public int AutoReturnScanDelaySeconds = 10;
     public int AutoNavigationTeleportThreshold = 100;
     public int AutoSkipProgressPercent = 80;
     public float CeNavigationRandomOffset = 15f;

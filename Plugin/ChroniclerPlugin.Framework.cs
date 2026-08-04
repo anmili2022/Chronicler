@@ -161,7 +161,7 @@ public sealed partial class ChroniclerPlugin
             autoReturnDueUtc = null;
             ClearAutoReturnGate();
             wasDead = false;
-            postReturnIdleUtc = null;
+            postReturnScanDueUtc = null;
             autoNavWasEnabled = false;
             ClearPendingStandbyNavigation();
             return;
@@ -221,12 +221,12 @@ public sealed partial class ChroniclerPlugin
 
         if (string.IsNullOrWhiteSpace(activeAutoNavigationKey))
         {
-            if (IsAtCampOrStandby(currentMap.Value) && postReturnIdleUtc.HasValue)
+            if (IsAtCampOrStandby(currentMap.Value) && postReturnScanDueUtc.HasValue)
             {
-                if (DateTime.UtcNow - postReturnIdleUtc.Value < TimeSpan.FromSeconds(10))
+                if (DateTime.UtcNow < postReturnScanDueUtc.Value)
                     return;
 
-                postReturnIdleUtc = null;
+                postReturnScanDueUtc = null;
             }
         }
 
@@ -301,8 +301,9 @@ public sealed partial class ChroniclerPlugin
             return true;
 
         ClearAutoReturnGate();
-        postReturnIdleUtc = DateTime.UtcNow;
-        LogHelper.Chat("已回到营地，10 秒后开始扫描目标。", PluginMessageKind.AutoNavigation);
+        var scanDelaySeconds = RandomizeAutoDelay(Configuration.AutoReturnScanDelaySeconds);
+        postReturnScanDueUtc = DateTime.UtcNow + TimeSpan.FromSeconds(scanDelaySeconds);
+        LogHelper.Chat(scanDelaySeconds > 0 ? $"已回到营地，{scanDelaySeconds} 秒后开始扫描目标。" : "已回到营地，开始扫描目标。", PluginMessageKind.AutoNavigation);
         return false;
     }
 
