@@ -48,6 +48,7 @@ BOCCHI 还监听 `_WideText` 插件的消息 `10965`，从游戏文本初始化�
 
 - `CrescentMapMarkerController` 管理新月岛标记，类别包括铜宝箱、银宝箱、魔法罐、第二次机会宝箱、胡萝卜和调查点。铜/银宝箱必须保持独立开关；魔法罐的南征/北征搜索点由同一个开关控制。
 - `KamiToolKit.MapOverlay` 用于北征浮空岛、地下区域等跨子地图覆盖标记；插件加载时必须先调用 `KamiToolKitLibrary.Initialize(pluginInterface, pluginName)`，卸载时在控制器释放后调用 `KamiToolKitLibrary.Dispose()`。
+- `KamiToolKit.dll` 是地图覆盖层的运行时依赖。GitHub Release 的 `Chronicler.zip` 必须同时包含 `Chronicler.dll`、`KamiToolKit.dll`、`Chronicler.json` 和 `Chronicler.deps.json`；发布后应下载并展开 ZIP 核对这四个文件。
 - 若覆盖层不可用，当前已打开的子地图仍通过 `AgentMap.AddMapMarker` 和 `AddMiniMapMarker` 显示标记。覆盖层或单个节点异常不得中断 `IFramework.Update`。
 - 每次刷新需清除本控制器放置的原生地图/小地图标记后再重绘，以便关闭类别立即生效。
 - `MapMarkerSwitcherWindow` 仅在新月岛且 `AreaMap` 可见时显示在地图上方。按钮顺序为铜、银、魔法罐、第二次机会宝箱、胡萝卜、调查点；绿色表示启用，灰色表示禁用。

@@ -306,7 +306,7 @@ internal sealed class VnavService : IDisposable
             NavigateTo(pos, preferredShardId: preferredShardId, dismountOnArrival: dismountOnArrival);
     }
 
-    public bool NavigateToFlag()
+    public bool NavigateToFlag(bool direct = false)
     {
         try
         {
@@ -317,7 +317,11 @@ internal sealed class VnavService : IDisposable
                 return false;
             }
 
-            NavigateTo(position.Value);
+            if (direct)
+                NavigateDirectTo(position.Value);
+            else
+                NavigateToTarget(position.Value, routes: null);
+
             return true;
         }
         catch (Exception ex)

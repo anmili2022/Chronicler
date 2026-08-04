@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
+using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Fates;
 using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Interface.Windowing;
@@ -27,6 +28,8 @@ internal sealed class FloatingStatusWindow : Window
     private int? previousWideTextSilverChests;
     private int? previousWideTextCopperChests;
     private DateTime lastWideTextParseUtc = DateTime.MinValue;
+    private DateTime investigationNoteUnlockCacheUtc = DateTime.MinValue;
+    private readonly Dictionary<int, bool> investigationNoteUnlocks = new();
     private readonly List<DetectedResource> detectedResources = new();
     private readonly List<DetectedResource> removedResources = new();
     private uint detectedResourceTerritory;
@@ -156,9 +159,9 @@ internal sealed class FloatingStatusWindow : Window
                 ImGui.SetTooltip("记录、更新待命点");
             ImGui.SameLine();
             if (ImGui.SmallButton("Flag"))
-                vnav.NavigateToFlag();
+                vnav.NavigateToFlag(config.DirectFlagNavigation);
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("导航到当前地图 Flag");
+                ImGui.SetTooltip($"前往当前地图 Flag（当前：{(config.DirectFlagNavigation ? "直接前往" : "按导航前往")}）\n可在设置页切换前往模式。");
             ImGui.SameLine();
             if (ImGui.SmallButton("效率"))
                 currencyGainTracker.PrintEfficiency();
@@ -603,6 +606,13 @@ internal sealed class FloatingStatusWindow : Window
                 ImGui.SameLine();
                 DrawDropMark(boss.Drop);
             }
+            if (ShouldShowInvestigationNoteTag(boss))
+            {
+                ImGui.SameLine();
+                ImGui.PushStyleColor(ImGuiCol.Text, Yellow);
+                ImGui.TextUnformatted("[笔]");
+                ImGui.PopStyleColor();
+            }
             ImGui.SameLine();
             var registerRemaining = ev.State == DynamicEventState.Register && ev.StartTimestamp > 0
                 ? (int)Math.Max(0, ev.StartTimestamp - DateTimeOffset.UtcNow.ToUnixTimeSeconds())
@@ -618,6 +628,41 @@ internal sealed class FloatingStatusWindow : Window
         }
 
         return true;
+    }
+
+    private bool ShouldShowInvestigationNoteTag(BossEntry? boss)
+    {
+        if (boss == null || !InvestigationNoteCatalog.HasNote(boss))
+            return false;
+
+        if (!config.LinkInvestigationNotesToFloatingWindow)
+            return true;
+
+        var noteNumber = InvestigationNoteCatalog.GetNoteNumber(boss);
+        if (!noteNumber.HasValue)
+            return true;
+
+        RefreshInvestigationNoteUnlocks();
+        return !investigationNoteUnlocks.GetValueOrDefault(noteNumber.Value);
+    }
+
+    private void RefreshInvestigationNoteUnlocks()
+    {
+        if (DalamudApi.Condition[ConditionFlag.InCombat])
+            return;
+
+        if (DateTime.UtcNow - investigationNoteUnlockCacheUtc < TimeSpan.FromSeconds(1))
+            return;
+
+        investigationNoteUnlocks.Clear();
+        var loreSheet = DalamudApi.DataManager.GetExcelSheet<Lumina.Excel.Sheets.MKDLore>();
+        foreach (var note in InvestigationNoteCatalog.South.Concat(InvestigationNoteCatalog.North))
+        {
+            var lore = loreSheet.GetRow((uint)note.Number);
+            investigationNoteUnlocks[note.Number] = lore.RowId != 0 && DalamudApi.UnlockState.IsMKDLoreUnlocked(lore);
+        }
+
+        investigationNoteUnlockCacheUtc = DateTime.UtcNow;
     }
 
     private bool IsInKnownMap()

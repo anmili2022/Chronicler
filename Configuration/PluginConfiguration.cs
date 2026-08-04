@@ -48,6 +48,8 @@ public sealed class PluginConfiguration : IPluginConfiguration
     public bool ShowNavigationMessages = true;
     public bool ShowFloatingStatusWindow = true;
     public bool LockFloatingStatusWindow = false;
+    public bool DirectFlagNavigation = false;
+    public bool LinkInvestigationNotesToFloatingWindow = false;
     public bool ShowFloatingTreasureCounts = false;
     public bool ShowFloatingCarrotCount = false;
     public bool SortChestCatalogByDistance = false;

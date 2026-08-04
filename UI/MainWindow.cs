@@ -3,11 +3,15 @@ using System.Numerics;
 using System.Text;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Game.ClientState.Fates;
+using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Interface.Windowing;
 using FFXIVClientStructs.FFXIV.Client.Game.InstanceContent;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using FFXIVClientStructs.FFXIV.Component.GUI;
+using FFXIVClientStructs.FFXIV.Client.UI;
 using XIVTreasure = Lumina.Excel.Sheets.Treasure;
 using TerritoryTypeSheet = Lumina.Excel.Sheets.TerritoryType;
+using MKDLoreSheet = Lumina.Excel.Sheets.MKDLore;
 
 namespace Chronicler;
 
@@ -28,6 +32,8 @@ internal sealed class MainWindow : Window
     private int routeSelectedFateBossIndex = -1;
     private int routeSelectedCeRouteIndex;
     private int routeSelectedFateRouteIndex;
+    private DateTime investigationNoteUnlockCacheUtc = DateTime.MinValue;
+    private readonly Dictionary<int, bool> investigationNoteUnlocks = new();
 
     public MainWindow(PluginConfiguration config, CrescentStateService state, VnavService vnav, InstancePopulationProvider populationProvider, CrescentMapMarkerController mapMarkers)
         : base($"新月岛史官 v{GetVersionText()}")
@@ -86,6 +92,12 @@ internal sealed class MainWindow : Window
             ImGui.EndTabItem();
         }
 
+        if (ImGui.BeginTabItem("调查笔记"))
+        {
+            DrawInvestigationNotes();
+            ImGui.EndTabItem();
+        }
+
         if (ImGui.BeginTabItem("设置"))
         {
             DrawSettings();
@@ -118,11 +130,121 @@ internal sealed class MainWindow : Window
         if (ImGui.Button("新月岛：北征之章 信息整理"))
             OpenUrl("https://bbs.nga.cn/read.php?tid=47269383");
         ImGui.SameLine();
+        if (ImGui.Button("调查笔记 Wiki"))
+            OpenUrl(InvestigationNoteCatalog.WikiUrl);
+        ImGui.SameLine();
         if (ImGui.Button("反馈问题"))
             OpenUrl("https://discord.com/channels/1258981591124938762/1533032549549477998");
 
         if (!string.IsNullOrWhiteSpace(statusText))
             ImGui.TextDisabled(statusText);
+    }
+
+    private void DrawInvestigationNotes()
+    {
+        var loreSheet = DalamudApi.DataManager.GetExcelSheet<MKDLoreSheet>();
+        var southUnlocked = CountUnlockedNotes(InvestigationNoteCatalog.South, loreSheet);
+        var northUnlocked = CountUnlockedNotes(InvestigationNoteCatalog.North, loreSheet);
+        ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 0.3f, 0.3f, 1f));
+        ImGui.TextUnformatted("提醒：部分区域危险程度较高，建议达到满级后再前往。");
+        ImGui.PopStyleColor();
+        ImGui.TextUnformatted($"已解锁：南征 {southUnlocked}/30，北征 {northUnlocked}/30，总计 {southUnlocked + northUnlocked}/60");
+        ImGui.TextDisabled("数据来源：最终幻想 XIV 中文维基。CE 名称后的 [笔] 表示该 CE 会获得调查笔记。");
+
+        if (!ImGui.BeginTable("##investigation_notes", 2, ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchSame))
+            return;
+
+        ImGui.TableNextColumn();
+        DrawInvestigationNoteMap("南征之章（1-30）", InvestigationNoteCatalog.South, loreSheet);
+        ImGui.TableNextColumn();
+        DrawInvestigationNoteMap("北征之章（31-60）", InvestigationNoteCatalog.North, loreSheet);
+        ImGui.EndTable();
+    }
+
+    private int CountUnlockedNotes(IReadOnlyList<InvestigationNoteEntry> notes, Lumina.Excel.ExcelSheet<MKDLoreSheet> loreSheet)
+        => notes.Count(note => IsInvestigationNoteUnlocked(note, loreSheet));
+
+    private bool IsInvestigationNoteUnlocked(InvestigationNoteEntry note, Lumina.Excel.ExcelSheet<MKDLoreSheet> loreSheet)
+    {
+        if (DalamudApi.Condition[ConditionFlag.InCombat])
+            return investigationNoteUnlocks.GetValueOrDefault(note.Number);
+
+        if (DateTime.UtcNow - investigationNoteUnlockCacheUtc >= TimeSpan.FromSeconds(1))
+        {
+            investigationNoteUnlocks.Clear();
+            foreach (var cachedNote in InvestigationNoteCatalog.South.Concat(InvestigationNoteCatalog.North))
+            {
+                var lore = loreSheet.GetRow((uint)cachedNote.Number);
+                investigationNoteUnlocks[cachedNote.Number] = lore.RowId != 0 && DalamudApi.UnlockState.IsMKDLoreUnlocked(lore);
+            }
+
+            investigationNoteUnlockCacheUtc = DateTime.UtcNow;
+        }
+
+        return investigationNoteUnlocks.GetValueOrDefault(note.Number);
+    }
+
+    private void DrawInvestigationNoteMap(string label, IReadOnlyList<InvestigationNoteEntry> notes, Lumina.Excel.ExcelSheet<MKDLoreSheet> loreSheet)
+    {
+        ImGui.TextUnformatted(label);
+        foreach (var note in notes)
+        {
+            var unlocked = IsInvestigationNoteUnlocked(note, loreSheet);
+            if (unlocked)
+                ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.35f, 0.9f, 0.45f, 1f));
+            ImGui.TextUnformatted($"{note.Number,2}. {note.Source}");
+            if (unlocked)
+                ImGui.PopStyleColor();
+            if (note.Point != null)
+            {
+                ImGui.SameLine();
+                if (ImGui.SmallButton($"导航##note_{note.Number}"))
+                    vnav.NavigateDirectTo(note.Point.Position, fly: false);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("按“直接前往”模式导航到该调查笔记坐标。");
+                ImGui.SameLine();
+                if (ImGui.SmallButton($"标记##note_{note.Number}"))
+                    MarkInvestigationNoteOnMap(note);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("在地图上标记该调查笔记坐标。");
+            }
+        }
+    }
+
+    private unsafe void MarkInvestigationNoteOnMap(InvestigationNoteEntry note)
+    {
+        if (note.Point == null)
+            return;
+
+        var map = note.Point.MapId == 967 ? ExpeditionMap.South : ExpeditionMap.North;
+        var territoryIds = map == ExpeditionMap.South ? config.SouthTerritoryIds : config.NorthTerritoryIds;
+        var territory = territoryIds.FirstOrDefault();
+        if (territory == 0)
+        {
+            statusText = $"未配置 {GetMapName(map)} TerritoryType，无法标记。";
+            LogHelper.Chat(statusText);
+            return;
+        }
+
+        try
+        {
+            var agentMap = AgentMap.Instance();
+            if (agentMap == null)
+            {
+                statusText = "地图标记服务不可用。";
+                LogHelper.Chat(statusText);
+                return;
+            }
+
+            agentMap->SetFlagMapMarker(territory, note.Point.MapId, note.Point.Position);
+            statusText = $"已标记调查笔记 {note.Number} ({note.Point.Position.X:F1}, {note.Point.Position.Y:F1}, {note.Point.Position.Z:F1})。";
+            LogHelper.Chat(statusText);
+        }
+        catch (Exception ex)
+        {
+            statusText = $"标记调查笔记失败: {ex.Message}";
+            LogHelper.Chat(statusText);
+        }
     }
 
     private void DrawSettings()
@@ -178,6 +300,34 @@ internal sealed class MainWindow : Window
         }
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("探测当前地图已加载的胡萝卜，并在悬浮窗显示数量和导航按钮。");
+
+        var linkInvestigationNotes = config.LinkInvestigationNotesToFloatingWindow;
+        if (ImGui.Checkbox("调查笔记联动", ref linkInvestigationNotes))
+        {
+            config.LinkInvestigationNotesToFloatingWindow = linkInvestigationNotes;
+            config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("开启后，悬浮窗中已解锁调查笔记对应的 CE 不再显示 [笔] 标签。");
+
+        ImGui.Separator();
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextUnformatted("前往 Flag");
+        ImGui.SameLine();
+        var directFlagNavigation = config.DirectFlagNavigation;
+        if (ImGui.RadioButton("直接前往##flag_direct", directFlagNavigation))
+        {
+            config.DirectFlagNavigation = true;
+            config.Save();
+        }
+        ImGui.SameLine();
+        if (ImGui.RadioButton("按导航前往##flag_pathfind", !directFlagNavigation))
+        {
+            config.DirectFlagNavigation = false;
+            config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("直接前往仅使用 vnavmesh 寻路；按导航前往使用与 FATE/CE 导航按钮相同的完整导航流程。设置会影响悬浮窗的 Flag 按钮。");
 
         ImGui.Separator();
         ImGui.AlignTextToFramePadding();
@@ -1779,6 +1929,63 @@ internal sealed class MainWindow : Window
         ImGui.EndTable();
     }
 
+    private unsafe void DrawInvestigationNoteDebug()
+    {
+        if (!ImGui.CollapsingHeader("调查笔记调试"))
+            return;
+
+        ImGui.TextDisabled("打开游戏内调查笔记界面后点击扫描，并将聊天输出反馈用于确认已解锁状态的数据位置。");
+        if (ImGui.Button("扫描调查笔记界面"))
+            ScanInvestigationNoteAddon();
+    }
+
+    private static unsafe void ScanInvestigationNoteAddon()
+    {
+        AtkUnitBase* loreBook = null;
+        var focusedUnits = RaptureAtkUnitManager.Instance()->FocusedUnitsList;
+        foreach (var entry in focusedUnits.Entries)
+        {
+            if (entry.Value == null || entry.Value->NameString != "MKDLoreBook")
+                continue;
+
+            loreBook = entry.Value;
+            break;
+        }
+
+        if (loreBook == null)
+            loreBook = (AtkUnitBase*)DalamudApi.GameGui.GetAddonByName("MKDLoreBook").Address;
+        if (loreBook != null && loreBook->IsVisible)
+        {
+            LogHelper.Chat("[调查笔记] 找到 AddOn=MKDLoreBook");
+            DumpAddonText(loreBook);
+            return;
+        }
+
+        LogHelper.Chat("[调查笔记] 未找到已打开的调查笔记界面。请先在游戏内打开调查笔记后再扫描。");
+    }
+
+    private static unsafe void DumpAddonText(AtkUnitBase* addon)
+    {
+        LogHelper.Chat($"[调查笔记] 节点数={addon->UldManager.NodeListCount}");
+        for (var i = 0; i < addon->UldManager.NodeListCount; i++)
+        {
+            var node = addon->UldManager.NodeList[i];
+            if (node == null || node->Type != NodeType.Text)
+                continue;
+
+            var text = ((AtkTextNode*)node)->NodeText.ToString();
+            if (!string.IsNullOrWhiteSpace(text))
+                LogHelper.Chat($"[调查笔记] node={node->NodeId} text={text}");
+        }
+
+        var titleNode = addon->GetTextNodeById(5);
+        var statusNode = addon->GetTextNodeById(7);
+        var title = titleNode == null ? string.Empty : titleNode->NodeText.ToString();
+        var status = statusNode == null ? string.Empty : statusNode->NodeText.ToString();
+        if (!string.IsNullOrWhiteSpace(title))
+            LogHelper.Chat($"[调查笔记] 当前条目={title}，状态={status}");
+    }
+
     private static void PrintCurrentFatesToChat()
     {
         var lines = DalamudApi.FateTable
@@ -1837,6 +2044,7 @@ internal sealed class MainWindow : Window
         DrawCeAnnouncements(map);
         DrawCriticalEncounters(map);
         DrawFateDebug(map);
+        DrawInvestigationNoteDebug();
         ImGui.Separator();
     }
 
