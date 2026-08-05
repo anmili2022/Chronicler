@@ -330,13 +330,13 @@ public sealed partial class ChroniclerPlugin
         }
 
         if (activeAutoNavigationKey.StartsWith("CE:", StringComparison.Ordinal)
-            && uint.TryParse(activeAutoNavigationKey[3..], out var ceIndex))
-            return IsCeAvailable(map, ceIndex);
+            && uint.TryParse(activeAutoNavigationKey[3..], out var dynamicEventId))
+            return IsCeAvailable(dynamicEventId);
 
         return false;
     }
 
-    private unsafe bool IsCeAvailable(ExpeditionMap map, uint ceIndex)
+    private static unsafe bool IsCeAvailable(uint dynamicEventId)
     {
         var content = PublicContentOccultCrescent.GetInstance();
         if (content == null)
@@ -347,8 +347,7 @@ public sealed partial class ChroniclerPlugin
             if (ev.State == DynamicEventState.Inactive)
                 continue;
 
-            var boss = BossCatalog.MatchCriticalEncounter(map, ev.DynamicEventId, ev.Name.ToString());
-            if (boss != null && (uint)boss.Index == ceIndex)
+            if (ev.DynamicEventId == dynamicEventId)
                 return true;
         }
 
@@ -385,7 +384,8 @@ public sealed partial class ChroniclerPlugin
                 continue;
             }
 
-            var key = $"FATE:{fateId}";
+            // Catalog IDs may be provisional; use the live row ID so the target remains active after navigation starts.
+            var key = $"FATE:{match.FateId}";
             if (activeAutoNavigationKey != key && ShouldSkipAutoTarget(match.State == FateState.Running, match.Progress))
             {
                 LogHelper.Chat($"{boss.Abbreviation} 进度 {match.Progress} ≥ {Configuration.AutoSkipProgressPercent} 跳过", PluginMessageKind.NavigationDebug);
@@ -421,7 +421,8 @@ public sealed partial class ChroniclerPlugin
             if (Configuration.DisabledAutoCeIds.Contains(bossKey))
                 continue;
 
-            var key = $"CE:{bossKey}";
+            // DynamicEvent IDs may differ from catalog indexes; use the live ID for the target lifecycle.
+            var key = $"CE:{ev.DynamicEventId}";
             if (activeAutoNavigationKey != key && ev.State == DynamicEventState.Battle)
                 continue;
 

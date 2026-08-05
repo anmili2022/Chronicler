@@ -217,7 +217,9 @@ internal sealed class FloatingStatusWindow : Window
             "紫" => new Vector4(0.75f, 0.35f, 1f, 1f),
             "绿" => new Vector4(0.35f, 0.9f, 0.35f, 1f),
             "蓝" => new Vector4(0.3f, 0.6f, 1f, 1f),
+            "青" => new Vector4(0.3f, 0.85f, 0.9f, 1f),
             "碧" => new Vector4(0.2f, 0.85f, 0.8f, 1f),
+            "橙" => new Vector4(1f, 0.55f, 0.25f, 1f),
             "金" => new Vector4(0.95f, 0.8f, 0.3f, 1f),
             "α" => new Vector4(0.6f, 0.8f, 1f, 1f),
             "β" => new Vector4(1f, 0.75f, 0.35f, 1f),
@@ -548,14 +550,10 @@ internal sealed class FloatingStatusWindow : Window
             return false;
 
         var currentMap = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, config);
-        for (var index = 0; index < fates.Length; index++)
+        foreach (var fate in fates)
         {
-            var fate = fates[index];
-            if (index == 0)
-            {
-                DrawSectionTag("FATE");
-                ImGui.SameLine();
-            }
+            DrawSectionTag("FATE");
+            ImGui.SameLine();
             var boss = currentMap.HasValue
                 ? BossCatalog.GetFates(currentMap.Value).FirstOrDefault(boss => boss.FateId == fate!.FateId
                     || boss.ObjectNameAliases.Any(alias => fate!.Name.TextValue.StartsWith(alias, StringComparison.Ordinal))
@@ -573,6 +571,7 @@ internal sealed class FloatingStatusWindow : Window
                 var reward when reward.StartsWith("消幻晶α", StringComparison.Ordinal) => "α",
                 var reward when reward.StartsWith("消幻晶β", StringComparison.Ordinal) => "β",
                 var reward when reward.StartsWith("消幻晶γ", StringComparison.Ordinal) => "γ",
+                var reward when reward is "青" or "碧" or "绿" or "橙" or "紫" or "黄" or "金" => reward,
                 _ => string.Empty,
             };
             if (!string.IsNullOrEmpty(dropMark))
@@ -609,14 +608,10 @@ internal sealed class FloatingStatusWindow : Window
             return false;
 
         var currentMap = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, config);
-        for (var index = 0; index < events.Length; index++)
+        foreach (var ev in events)
         {
-            var ev = events[index];
-            if (index == 0)
-            {
-                DrawSectionTag("CE");
-                ImGui.SameLine();
-            }
+            DrawSectionTag("CE");
+            ImGui.SameLine();
             var boss = currentMap.HasValue
                 ? BossCatalog.MatchCriticalEncounter(currentMap.Value, ev.DynamicEventId, ev.Name.ToString())
                 : null;

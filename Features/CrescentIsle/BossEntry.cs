@@ -9,6 +9,7 @@ internal sealed record BossEntry(
     string Name,
     string Trigger,
     ushort? FateId,
+    uint? DynamicEventId,
     string Drop,
     string[] ObjectNameAliases);
 

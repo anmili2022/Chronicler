@@ -991,7 +991,7 @@ internal sealed class MainWindow : Window
         ImGui.SameLine();
         DrawAutoTargetBulkToggle("CE", ceBosses.Select(boss => (uint)boss.Index));
         ImGui.SameLine();
-        DrawAutoTargetBulkToggle("FATE", fateBosses.Select(boss => (uint)boss.FateId!.Value));
+        DrawAutoTargetBulkToggle("FATE", fateBosses.Select(boss => (uint)boss.FateId!.Value), resolvedMap == ExpeditionMap.South ? [1963] : []);
         ImGui.SameLine();
         if (ImGui.SmallButton(config.HasAutoReturnStandbyPoint ? "更新待命点" : "记录待命点"))
         {
@@ -1531,17 +1531,18 @@ internal sealed class MainWindow : Window
 
         foreach (var boss in bosses)
         {
-            var eventId = (uint)boss.Index;
+            var targetId = (uint)boss.Index;
+            var eventId = boss.DynamicEventId;
             var ev = FindActiveCriticalEncounter(content, boss);
-            var enabled = !config.DisabledAutoCeIds.Contains(eventId);
+            var enabled = !config.DisabledAutoCeIds.Contains(targetId);
 
             ImGui.TableNextRow();
             ImGui.TableSetColumnIndex(0);
             if (ImGui.Checkbox($"##auto_ce_{boss.Map}_{boss.Id}", ref enabled))
-                SetAutoTargetEnabled("CE", eventId, enabled);
+                SetAutoTargetEnabled("CE", targetId, enabled);
 
             ImGui.TableSetColumnIndex(1);
-            ImGui.TextUnformatted(eventId.ToString());
+            ImGui.TextUnformatted(eventId?.ToString() ?? "--");
             ImGui.TableSetColumnIndex(2);
             ImGui.TextUnformatted(boss.Abbreviation);
             ImGui.TableSetColumnIndex(3);
@@ -1586,10 +1587,10 @@ internal sealed class MainWindow : Window
         return null;
     }
 
-    private void DrawAutoTargetBulkToggle(string type, IEnumerable<uint> ids)
+    private void DrawAutoTargetBulkToggle(string type, IEnumerable<uint> ids, IReadOnlyCollection<uint>? excludedIds = null)
     {
         var list = type == "CE" ? config.DisabledAutoCeIds : config.DisabledAutoFateIds;
-        var allIds = ids.Distinct().ToList();
+        var allIds = ids.Distinct().Where(id => excludedIds == null || !excludedIds.Contains(id)).ToList();
         var allEnabled = allIds.All(id => !list.Contains(id));
         var label = allEnabled ? $"{type} 全不选" : $"{type} 全选";
 
@@ -1643,7 +1644,7 @@ internal sealed class MainWindow : Window
         {
             foreach (var ev in content->DynamicEventContainer.Events)
             {
-                if (ev.DynamicEventId == boss.Index && ev.State != DynamicEventState.Inactive)
+                if (ev.DynamicEventId == boss.DynamicEventId && ev.State != DynamicEventState.Inactive)
                     return ev.State.ToString();
             }
         }

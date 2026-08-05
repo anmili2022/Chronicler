@@ -10,7 +10,7 @@ public sealed class PluginConfiguration : IPluginConfiguration
     [NonSerialized]
     private IDalamudPluginInterface? pluginInterface;
 
-    public int Version { get; set; } = 8;
+    public int Version { get; set; } = 11;
     public bool Enabled = true;
     public bool ListenChat = true;
     public bool AutoDetectAppearances = true;
@@ -41,7 +41,7 @@ public sealed class PluginConfiguration : IPluginConfiguration
     public string AutoNavigationTargetType = string.Empty;
     public uint AutoNavigationTargetId = 0;
     public string AutoNavigationTargetName = string.Empty;
-    public List<uint> DisabledAutoFateIds = new();
+    public List<uint> DisabledAutoFateIds = new() { 1963 };
     public List<uint> DisabledAutoCeIds = new();
     public bool ShowDebugSections = false;
     public bool ShowNavigationDebug = false;
@@ -150,6 +150,27 @@ public sealed class PluginConfiguration : IPluginConfiguration
             ShowMapBronzeChestMarkers = ShowMapChestMarkers;
             ShowMapSilverChestMarkers = ShowMapChestMarkers;
             Version = 8;
+            Save();
+        }
+
+        if (Version < 9)
+        {
+            if (!DisabledAutoFateIds.Contains(1963))
+                DisabledAutoFateIds.Add(1963);
+            Version = 9;
+            Save();
+        }
+
+        if (Version < 10)
+        {
+            Version = 10;
+            Save();
+        }
+
+        if (Version < 11)
+        {
+            DisabledAutoFateIds.Remove(1968);
+            Version = 11;
             Save();
         }
     }

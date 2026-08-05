@@ -217,7 +217,12 @@ internal sealed class VnavService : IDisposable
     }
 
     public static uint? GetPreferredShardIdForFate(ushort fateId)
-        => fateId == 2075 ? 69420406u : null;
+        => fateId switch
+        {
+            1967 => 4929u, // 进化的毒鸟——高等魔鸟：结晶洞窟
+            2075 => 69420406u,
+            _ => null,
+        };
 
     public static uint? GetPreferredShardIdForCriticalEncounter(ExpeditionMap map, int bossIndex)
         => map == ExpeditionMap.North && bossIndex == 3 ? 69420406u : null;

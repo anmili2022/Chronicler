@@ -18,6 +18,23 @@
 - `MainWindow`：完整配置、记录、导入导出、调试区、自动导航目标列表和 DEBUG 页签。
 - `FloatingStatusWindow`：轻量显示当前新月岛史官目标（含掉落标记），并提供导航、清除导航、回营地、全自动开关、待命点和效率按钮。目标列表使用紧凑的 `[FATE]` / `[CE]` 淡蓝标签作为各区第一条目标前缀，避免额外分区行；CE 的特殊灵魂碎晶标签为惨白魔人 `[青]`、亡灵法师 `[亡]`，标签颜色分别为青色和橙红色，悬停显示掉落说明。
 
+## ID 与数据核验
+
+- `BossEntry.Index` 是 xyd 分享码固定 17 槽位的索引，不能作为游戏 CE 的 `DynamicEventId`。
+- `BossEntry.DynamicEventId` 保存已核验的游戏 CE ID；CE 检测、实时状态、自动导航生命周期和调试显示使用该字段。
+- CE 映射以 `E:\git\BOCCHI-Kano\BOCCHI\Data\EventData.cs` 的 `CriticalEncounters` 为 ID 来源，并使用 `E:\git\BOCCHI-Kano\Translations\zh\modules.automator.json` 核对中文名称。
+- 南征 xyd CE 槽位 `1-15` 对应游戏 `DynamicEventId 33-47`，不是 `0-14`；北征 xyd CE 槽位 `101-115` 对应 `DynamicEventId 49-63`。`DynamicEventId 48` 以及北征 `64-65` 为两岐塔事件，不属于当前 xyd 17 槽位目录。
+- 完整映射表见 `docs/ce-id-mapping.md`。修改 Boss 顺序、简称或 ID 时必须同时更新该表和 `BossCatalog`。
+- BOCCHI 中 FATE `1968` 的英文内部名为 `A Delicate Balance`，中文对应“湿度猎手——除湿之火”，坐标为 `(-370.0, 75.0, 650.0)`，掉落南征绿色魂晶。Chronicler 的 `BossCatalog`、`BossPositionCatalog` 和自动导航配置必须保持该映射。
+- 南征 FATE `1967`“进化的毒鸟——高等魔鸟”优先使用结晶洞窟水晶 `PlaceNameId 4929`；不能误写成 `1969`，后者是“癫泥怪”。
+
+### 当前路线与坐标缺口
+
+- 北征 15 个 xyd CE 已使用 BOCCHI `StartPosition` 填入 `BossPositionCatalog`。
+- 南征 CE `33-47` 在 BOCCHI `EventData` 中没有 `StartPosition`，因此不填猜测坐标；需要通过游戏内 CE 动态事件坐标或路线录制继续补齐。
+- 南征和北征 FATE 坐标已按 BOCCHI 数据核对；北征 FATE `2084` 没有 BOCCHI 固定起点，保留官方 `planmap.lgb` 坐标 `(140, 37, -708)`，运行时仍优先使用 `IFate.Position`。
+- 内置路线目前覆盖北征 FATE `2073`（BossId `116`，三条路线）和 FATE `2083`（一条路线）；其他目标没有经过实机验证的内置路线时回退到直接导航。
+
 触发条件以 `https://xyd.zzmelon.com/js/app.js` 的当前 CE 列表为准；更新时需同步 `BossCatalog` 与 README 的南北征表格。
 
 ## BOCCHI 参考
