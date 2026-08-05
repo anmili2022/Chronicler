@@ -461,8 +461,12 @@ internal sealed class MainWindow : Window
         else
             chests = chests.OrderBy(chest => chest.Chest.TreasureRowId).ToList();
 
+        if (!ImGui.BeginTable("##chest_catalog", 3, ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp))
+            return;
+
         foreach (var entry in chests)
         {
+            ImGui.TableNextColumn();
             var chest = entry.Chest;
             ImGui.TextUnformatted($"{entry.Type} #{chest.TreasureRowId} ({chest.Position.X:F1}, {chest.Position.Y:F1}, {chest.Position.Z:F1})");
             if (vnav.IsReady)
@@ -516,6 +520,8 @@ internal sealed class MainWindow : Window
                 }
             }
         }
+
+        ImGui.EndTable();
     }
 
     private void DrawMapMarkers()

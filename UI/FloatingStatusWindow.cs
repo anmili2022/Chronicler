@@ -606,12 +606,24 @@ internal sealed class FloatingStatusWindow : Window
                 ImGui.SameLine();
                 DrawDropMark(boss.Drop);
             }
+            if (boss != null)
+                DrawSoulCrystalMark(boss);
             if (ShouldShowInvestigationNoteTag(boss))
             {
                 ImGui.SameLine();
                 ImGui.PushStyleColor(ImGuiCol.Text, Yellow);
                 ImGui.TextUnformatted("[笔]");
                 ImGui.PopStyleColor();
+                if (ImGui.IsItemHovered())
+                {
+                    var noteNumber = boss == null ? null : InvestigationNoteCatalog.GetNoteNumber(boss);
+                    var note = noteNumber.HasValue
+                        ? InvestigationNoteCatalog.South.Concat(InvestigationNoteCatalog.North).FirstOrDefault(item => item.Number == noteNumber.Value)
+                        : null;
+                    ImGui.SetTooltip(note == null
+                        ? "调查笔记"
+                        : $"调查笔记 #{note.Number}\n{note.Source}");
+                }
             }
             ImGui.SameLine();
             var registerRemaining = ev.State == DynamicEventState.Register && ev.StartTimestamp > 0
@@ -628,6 +640,26 @@ internal sealed class FloatingStatusWindow : Window
         }
 
         return true;
+    }
+
+    private static void DrawSoulCrystalMark(BossEntry boss)
+    {
+        var (mark, color, tooltip) = boss.Id switch
+        {
+            111 => ("青", new Vector4(0.2f, 0.9f, 0.9f, 1f), "掉落灵魂碎晶：青魔法师"),
+            102 => ("亡", new Vector4(1f, 0.35f, 0.2f, 1f), "掉落灵魂碎晶：亡灵法师"),
+            _ => (string.Empty, default, string.Empty),
+        };
+
+        if (string.IsNullOrEmpty(mark))
+            return;
+
+        ImGui.SameLine();
+        ImGui.PushStyleColor(ImGuiCol.Text, color);
+        ImGui.TextUnformatted($"[{mark}]");
+        ImGui.PopStyleColor();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(tooltip);
     }
 
     private bool ShouldShowInvestigationNoteTag(BossEntry? boss)
