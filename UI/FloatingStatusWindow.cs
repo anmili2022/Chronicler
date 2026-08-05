@@ -16,6 +16,8 @@ namespace Chronicler;
 internal sealed class FloatingStatusWindow : Window
 {
     private static readonly Vector4 Yellow = new(1f, 0.85f, 0.3f, 1f);
+    private static readonly Vector4 SectionText = new(0.55f, 0.78f, 1f, 1f);
+    private static readonly Vector4 MutedText = new(0.62f, 0.67f, 0.76f, 1f);
 
     private readonly PluginConfiguration config;
     private readonly CrescentStateService state;
@@ -92,6 +94,7 @@ internal sealed class FloatingStatusWindow : Window
             return;
 
         ImGui.Separator();
+        ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new Vector2(6f, 4f));
 
         DrawResourceCounts();
         var drewMagicPotWarning = DrawMagicPotRefreshWarnings();
@@ -168,6 +171,8 @@ internal sealed class FloatingStatusWindow : Window
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("输出当前货币获取效率");
         }
+
+        ImGui.PopStyleVar();
     }
 
     private bool DrawHeader()
@@ -222,6 +227,13 @@ internal sealed class FloatingStatusWindow : Window
 
         ImGui.PushStyleColor(ImGuiCol.Text, color);
         ImGui.TextUnformatted($"[{drop}]");
+        ImGui.PopStyleColor();
+    }
+
+    private static void DrawSectionTag(string title)
+    {
+        ImGui.PushStyleColor(ImGuiCol.Text, SectionText);
+        ImGui.TextUnformatted($"[{title}]");
         ImGui.PopStyleColor();
     }
 
@@ -535,10 +547,15 @@ internal sealed class FloatingStatusWindow : Window
         if (fates.Length == 0)
             return false;
 
-        ImGui.TextUnformatted("FATE");
         var currentMap = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, config);
-        foreach (var fate in fates)
+        for (var index = 0; index < fates.Length; index++)
         {
+            var fate = fates[index];
+            if (index == 0)
+            {
+                DrawSectionTag("FATE");
+                ImGui.SameLine();
+            }
             var boss = currentMap.HasValue
                 ? BossCatalog.GetFates(currentMap.Value).FirstOrDefault(boss => boss.FateId == fate!.FateId
                     || boss.ObjectNameAliases.Any(alias => fate!.Name.TextValue.StartsWith(alias, StringComparison.Ordinal))
@@ -591,10 +608,15 @@ internal sealed class FloatingStatusWindow : Window
         if (events.Length == 0)
             return false;
 
-        ImGui.TextUnformatted("CE");
         var currentMap = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, config);
-        foreach (var ev in events)
+        for (var index = 0; index < events.Length; index++)
         {
+            var ev = events[index];
+            if (index == 0)
+            {
+                DrawSectionTag("CE");
+                ImGui.SameLine();
+            }
             var boss = currentMap.HasValue
                 ? BossCatalog.MatchCriticalEncounter(currentMap.Value, ev.DynamicEventId, ev.Name.ToString())
                 : null;
