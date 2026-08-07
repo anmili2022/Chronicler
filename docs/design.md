@@ -59,6 +59,8 @@ BOCCHI 还监听 `_WideText` 插件的消息 `10965`，从游戏文本初始化�
 胡萝卜：ObjectKind.EventObj + BaseId == 2010139
 ```
 
+- 个人或非地图战利品箱 `BaseId 1996`、`2000-2003` 可能复用铜/银宝箱模型，但不是地图宝箱节点。实时宝箱探测、计数和接近提示必须通过 `ChestCatalog.ShouldDetectLiveTreasure` 排除内置屏蔽列表中的 ID。
+
 地图标记坐标还参考 `EurekaTrackerAutoPopper/OccultChests.cs`（MIT License），并保留源项目归属说明。
 
 ### 地图标记

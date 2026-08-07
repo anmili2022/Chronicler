@@ -271,6 +271,7 @@ internal sealed class FloatingStatusWindow : Window
             if (config.ShowFloatingTreasureCounts)
             {
                 if (obj.ObjectKind == ObjectKind.Treasure
+                    && ChestCatalog.ShouldDetectLiveTreasure(obj.BaseId)
                     && treasureSheet.GetRow(obj.BaseId).SGB.RowId == 1596)
                 {
                     var resource = new DetectedResource("铜宝箱", obj.Position);
@@ -284,6 +285,7 @@ internal sealed class FloatingStatusWindow : Window
                     AddDetectedResource(resource);
                 }
                 else if (obj.ObjectKind == ObjectKind.Treasure
+                    && ChestCatalog.ShouldDetectLiveTreasure(obj.BaseId)
                     && treasureSheet.GetRow(obj.BaseId).SGB.RowId == 1597)
                 {
                     var resource = new DetectedResource("银宝箱", obj.Position);
