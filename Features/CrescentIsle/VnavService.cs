@@ -241,6 +241,22 @@ internal sealed class VnavService : IDisposable
         StartMove(dest, fly);
     }
 
+    /// <summary>独立模式：直接使用 vnavmesh 前往目标，不选择水晶、不传送、不回营地，也不自动上下坐骑。</summary>
+    public bool NavigateIndependent(Vector3 dest, bool fly = false)
+    {
+        ClearPendingNavigation();
+        ClearRouteNavigation();
+        return StartPathfind(dest, fly);
+    }
+
+    /// <summary>直接将单个航点交给 vnavmesh 移动执行器，不寻路、不上坐骑、不传送。</summary>
+    public bool NavigateRespawnDirect(Vector3 dest)
+    {
+        ClearPendingNavigation();
+        ClearRouteNavigation();
+        return StartForcedMove(dest);
+    }
+
     private unsafe void NavigateToInternal(Vector3 dest, bool fly, uint? preferredShardId, bool dismountOnArrival, bool clearRouteNavigation, Vector3? teleportSelectionTarget = null)
     {
         ClearPendingNavigation();
@@ -1240,15 +1256,24 @@ internal sealed class VnavService : IDisposable
         StartPathfind(target, fly);
     }
 
-    private void StartPathfind(Vector3 target, bool fly)
+    private bool StartPathfind(Vector3 target, bool fly)
     {
-        LogHelper.Info($"导航到 ({target.X:F1}, {target.Y:F1}, {target.Z:F1}) fly={fly}");
-        var ok = pathfindAndMoveTo.InvokeFunc(target, fly);
-        if (ok)
-            DebugChat("导航调试: 开始步行导航。");
-        else
-            LogHelper.Chat("vnavmesh 未能开始导航。");
-        LogHelper.Info($"导航结果: {ok}");
+        try
+        {
+            LogHelper.Info($"导航到 ({target.X:F1}, {target.Y:F1}, {target.Z:F1}) fly={fly}");
+            var ok = pathfindAndMoveTo.InvokeFunc(target, fly);
+            if (ok)
+                DebugChat("导航调试: 开始步行导航。");
+            else
+                LogHelper.Chat("vnavmesh 未能开始导航。", PluginMessageKind.NavigationDebug);
+            LogHelper.Info($"导航结果: {ok}");
+            return ok;
+        }
+        catch (Exception ex)
+        {
+            LogHelper.Warning(ex, "vnavmesh 开始步行导航失败。");
+            return false;
+        }
     }
 
     private bool QueueMountBeforeMove(Vector3 target, bool fly)

@@ -9,10 +9,10 @@ internal sealed class PluginUI : IDisposable
     private readonly FloatingStatusWindow floatingStatusWindow;
     private readonly MapMarkerSwitcherWindow mapMarkerSwitcherWindow;
 
-    public PluginUI(PluginConfiguration config, CrescentStateService state, VnavService vnav, CurrencyGainTracker currencyGainTracker, InstancePopulationProvider populationProvider, CrescentMapMarkerController mapMarkers)
+    public PluginUI(PluginConfiguration config, CrescentStateService state, VnavService vnav, CurrencyGainTracker currencyGainTracker, InstancePopulationProvider populationProvider, CrescentMapMarkerController mapMarkers, AchievementProgressService achievementProgress)
     {
-        mainWindow = new MainWindow(config, state, vnav, populationProvider, mapMarkers);
-        floatingStatusWindow = new FloatingStatusWindow(config, state, ToggleMainWindow, vnav, currencyGainTracker);
+        mainWindow = new MainWindow(config, state, vnav, populationProvider, mapMarkers, achievementProgress);
+        floatingStatusWindow = new FloatingStatusWindow(config, state, ToggleMainWindow, vnav, currencyGainTracker, achievementProgress);
         mapMarkerSwitcherWindow = new MapMarkerSwitcherWindow(config, mapMarkers);
         windowSystem.AddWindow(mainWindow);
         windowSystem.AddWindow(floatingStatusWindow);

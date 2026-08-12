@@ -10,8 +10,24 @@ public sealed class PluginConfiguration : IPluginConfiguration
     [NonSerialized]
     private IDalamudPluginInterface? pluginInterface;
 
-    public int Version { get; set; } = 11;
+    public int Version { get; set; } = 13;
     public bool Enabled = true;
+    public bool ShowAchievementInFloatingWindow = false;
+    public bool ShowRescueAchievementInFloatingWindow = false;
+    public bool AchievementRespawnNavigationEnabled = true;
+    public bool HasAchievementDeathPoint = false;
+    public bool HasAchievementRescuePoint = false;
+    public uint AchievementTargetBaseId = 0;
+    public uint AchievementSouthDoctorId = 3674;
+    public uint AchievementNorthDoctorId = 4016;
+    public ExpeditionMap AchievementDeathMap = ExpeditionMap.South;
+    public ExpeditionMap AchievementRescueMap = ExpeditionMap.South;
+    public float AchievementDeathX = 0;
+    public float AchievementDeathY = 0;
+    public float AchievementDeathZ = 0;
+    public float AchievementRescueX = 0;
+    public float AchievementRescueY = 0;
+    public float AchievementRescueZ = 0;
     public bool ListenChat = true;
     public bool AutoDetectAppearances = true;
     [NonSerialized]
@@ -171,6 +187,16 @@ public sealed class PluginConfiguration : IPluginConfiguration
         {
             DisabledAutoFateIds.Remove(1968);
             Version = 11;
+            Save();
+        }
+
+        if (Version < 13)
+        {
+            if (AchievementSouthDoctorId == 0)
+                AchievementSouthDoctorId = 3674;
+            if (AchievementNorthDoctorId == 0)
+                AchievementNorthDoctorId = 4016;
+            Version = 13;
             Save();
         }
     }

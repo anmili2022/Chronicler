@@ -24,6 +24,7 @@ internal sealed class FloatingStatusWindow : Window
     private readonly Action toggleSettings;
     private readonly VnavService vnav;
     private readonly CurrencyGainTracker currencyGainTracker;
+    private readonly AchievementProgressService achievementProgress;
     private bool collapsed;
     private int? wideTextSilverChests;
     private int? wideTextCopperChests;
@@ -38,7 +39,7 @@ internal sealed class FloatingStatusWindow : Window
 
     private sealed record DetectedResource(string Type, Vector3 Position);
 
-    public FloatingStatusWindow(PluginConfiguration config, CrescentStateService state, Action toggleSettings, VnavService vnav, CurrencyGainTracker currencyGainTracker)
+    public FloatingStatusWindow(PluginConfiguration config, CrescentStateService state, Action toggleSettings, VnavService vnav, CurrencyGainTracker currencyGainTracker, AchievementProgressService achievementProgress)
         : base(
             "##ChroniclerFloatingStatus",
             ImGuiWindowFlags.NoTitleBar
@@ -53,6 +54,7 @@ internal sealed class FloatingStatusWindow : Window
         this.toggleSettings = toggleSettings;
         this.vnav = vnav;
         this.currencyGainTracker = currencyGainTracker;
+        this.achievementProgress = achievementProgress;
         BgAlpha = 0.8f;
         SizeCondition = ImGuiCond.FirstUseEver;
         Position = new Vector2(420f, 220f);
@@ -88,6 +90,12 @@ internal sealed class FloatingStatusWindow : Window
                 ImGui.SameLine();
                 DrawStatusBadge("自动进出", new Vector4(0.16f, 0.32f, 0.5f, 1f), new Vector4(0.6f, 0.82f, 1f, 1f));
             }
+        }
+
+        if (config.AchievementRespawnNavigationEnabled)
+        {
+            ImGui.SameLine();
+            DrawStatusBadge("送死", new Vector4(0.45f, 0.25f, 0.16f, 1f), new Vector4(1f, 0.72f, 0.38f, 1f));
         }
 
         if (collapsed)
@@ -172,6 +180,53 @@ internal sealed class FloatingStatusWindow : Window
                 ImGui.SetTooltip("输出当前货币获取效率");
         }
 
+        if (config.ShowAchievementInFloatingWindow)
+        {
+            ImGui.Separator();
+            DrawSectionTag("送死");
+            ImGui.SameLine();
+            if (ImGui.SmallButton(config.AchievementRespawnNavigationEnabled
+                ? "关闭送死##achievement_toggle"
+                : "开启送死##achievement_toggle"))
+            {
+                config.AchievementRespawnNavigationEnabled = !config.AchievementRespawnNavigationEnabled;
+                config.Save();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip(config.AchievementRespawnNavigationEnabled
+                    ? "关闭复活后自动返回送死坐标。"
+                    : "开启复活后自动返回已记录的送死坐标。需先记录坐标。 ");
+            ImGui.SameLine();
+            if (ImGui.SmallButton("送死坐标"))
+                RecordAchievementDeath();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("记录当前位置为送死坐标，复活后自动导航到该位置。");
+        }
+
+        if (config.ShowAchievementInFloatingWindow && config.ShowRescueAchievementInFloatingWindow)
+        {
+            achievementProgress.Update(force: false);
+            var currentMap = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, config);
+            if (currentMap.HasValue)
+            {
+                var targetId = currentMap.Value == ExpeditionMap.South
+                    ? config.AchievementSouthDoctorId
+                    : config.AchievementNorthDoctorId;
+                var info = achievementProgress.Snapshot().FirstOrDefault(item => item.AchievementId == targetId);
+                if (info != null)
+                {
+                    ImGui.Separator();
+                    DrawSectionTag("成就进度");
+                    ImGui.SameLine();
+                    if (info.Complete)
+                        ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.35f, 0.9f, 0.45f, 1f));
+                    ImGui.TextUnformatted($"{info.Name}: {(info.Complete ? "已完成" : $"{info.Current} / {info.Max}")}");
+                    if (info.Complete)
+                        ImGui.PopStyleColor();
+                }
+            }
+        }
+
         ImGui.PopStyleVar();
     }
 
@@ -190,6 +245,26 @@ internal sealed class FloatingStatusWindow : Window
 
     private static string FormatMapName(ExpeditionMap map)
         => map == ExpeditionMap.South ? "南征" : "北征";
+
+    private void RecordAchievementDeath()
+    {
+        var pos = DalamudApi.ObjectTable.LocalPlayer?.Position;
+        var currentMap = TerritoryGate.ResolveMap(DalamudApi.ClientState.TerritoryType, config);
+        if (!pos.HasValue || !currentMap.HasValue)
+        {
+            LogHelper.Chat("请先进入新月岛地图再记录送死坐标。");
+            return;
+        }
+
+        config.AchievementDeathX = pos.Value.X;
+        config.AchievementDeathY = pos.Value.Y;
+        config.AchievementDeathZ = pos.Value.Z;
+        config.AchievementDeathMap = currentMap.Value;
+        config.HasAchievementDeathPoint = true;
+        config.Save();
+        LogHelper.Chat($"已记录送死坐标 {FormatMapName(currentMap.Value)} ({pos.Value.X:F1}, {pos.Value.Y:F1}, {pos.Value.Z:F1})，复活后自动导航。");
+    }
+
 
     private static void DrawStatusBadge(string label, Vector4 background, Vector4 textColor)
     {
@@ -261,6 +336,7 @@ internal sealed class FloatingStatusWindow : Window
         var carrots = 0;
         var visibleResources = new List<DetectedResource>();
         var openedResources = new List<DetectedResource>();
+        var currentMap = TerritoryGate.ResolveMap(territory, config);
 
         var treasureSheet = DalamudApi.DataManager.GetExcelSheet<XIVTreasure>();
         foreach (var obj in DalamudApi.ObjectTable)
@@ -270,11 +346,13 @@ internal sealed class FloatingStatusWindow : Window
 
             if (config.ShowFloatingTreasureCounts)
             {
-                if (obj.ObjectKind == ObjectKind.Treasure
-                    && ChestCatalog.ShouldDetectLiveTreasure(obj.BaseId)
+                var treasureLabel = obj.ObjectKind == ObjectKind.Treasure && currentMap.HasValue
+                    ? ChestCatalog.GetLiveTreasureLabel(currentMap.Value, obj.BaseId)
+                    : string.Empty;
+                if (treasureLabel == "铜宝箱"
                     && treasureSheet.GetRow(obj.BaseId).SGB.RowId == 1596)
                 {
-                    var resource = new DetectedResource("铜宝箱", obj.Position);
+                    var resource = new DetectedResource(treasureLabel, obj.Position);
                     if (IsTreasureOpened(obj))
                         openedResources.Add(resource);
                     if (!obj.IsValid() || obj.IsDead)
@@ -284,11 +362,10 @@ internal sealed class FloatingStatusWindow : Window
                     visibleResources.Add(resource);
                     AddDetectedResource(resource);
                 }
-                else if (obj.ObjectKind == ObjectKind.Treasure
-                    && ChestCatalog.ShouldDetectLiveTreasure(obj.BaseId)
+                else if (treasureLabel == "银宝箱"
                     && treasureSheet.GetRow(obj.BaseId).SGB.RowId == 1597)
                 {
-                    var resource = new DetectedResource("银宝箱", obj.Position);
+                    var resource = new DetectedResource(treasureLabel, obj.Position);
                     if (IsTreasureOpened(obj))
                         openedResources.Add(resource);
                     if (!obj.IsValid() || obj.IsDead)

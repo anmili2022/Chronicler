@@ -189,8 +189,13 @@ internal sealed class CrescentMapMarkerController : IDisposable
 
             var label = obj.ObjectKind == ObjectKind.EventObj && obj.BaseId == 2010139
                 ? "胡萝卜"
-                : obj.ObjectKind == ObjectKind.Treasure && ChestCatalog.ShouldDetectLiveTreasure(obj.BaseId)
-                    ? treasures.GetRow(obj.BaseId).SGB.RowId switch { 1596 => "铜宝箱", 1597 => "银宝箱", _ => string.Empty }
+                : obj.ObjectKind == ObjectKind.Treasure
+                    ? ChestCatalog.GetLiveTreasureLabel(map.Value, obj.BaseId) switch
+                    {
+                        "铜宝箱" when treasures.GetRow(obj.BaseId).SGB.RowId == 1596 => "铜宝箱",
+                        "银宝箱" when treasures.GetRow(obj.BaseId).SGB.RowId == 1597 => "银宝箱",
+                        _ => string.Empty,
+                    }
                     : string.Empty;
             if (string.IsNullOrEmpty(label))
                 continue;

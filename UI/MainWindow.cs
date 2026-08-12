@@ -12,6 +12,7 @@ using FFXIVClientStructs.FFXIV.Client.UI;
 using XIVTreasure = Lumina.Excel.Sheets.Treasure;
 using TerritoryTypeSheet = Lumina.Excel.Sheets.TerritoryType;
 using MKDLoreSheet = Lumina.Excel.Sheets.MKDLore;
+using AchievementSheet = Lumina.Excel.Sheets.Achievement;
 
 namespace Chronicler;
 
@@ -22,6 +23,7 @@ internal sealed class MainWindow : Window
     private readonly VnavService vnav;
     private readonly InstancePopulationProvider populationProvider;
     private readonly CrescentMapMarkerController mapMarkers;
+    private readonly AchievementProgressService achievementProgress;
     private string sharedText = string.Empty;
     private string statusText = string.Empty;
     private string southTerritoriesText;
@@ -35,7 +37,7 @@ internal sealed class MainWindow : Window
     private DateTime investigationNoteUnlockCacheUtc = DateTime.MinValue;
     private readonly Dictionary<int, bool> investigationNoteUnlocks = new();
 
-    public MainWindow(PluginConfiguration config, CrescentStateService state, VnavService vnav, InstancePopulationProvider populationProvider, CrescentMapMarkerController mapMarkers)
+    public MainWindow(PluginConfiguration config, CrescentStateService state, VnavService vnav, InstancePopulationProvider populationProvider, CrescentMapMarkerController mapMarkers, AchievementProgressService achievementProgress)
         : base($"新月岛史官 v{GetVersionText()}")
     {
         this.config = config;
@@ -43,6 +45,7 @@ internal sealed class MainWindow : Window
         this.vnav = vnav;
         this.populationProvider = populationProvider;
         this.mapMarkers = mapMarkers;
+        this.achievementProgress = achievementProgress;
         NormalizeTerritoryIds();
         southTerritoriesText = FormatTerritoryIds(config.SouthTerritoryIds);
         northTerritoriesText = FormatTerritoryIds(config.NorthTerritoryIds);
@@ -95,6 +98,12 @@ internal sealed class MainWindow : Window
         if (ImGui.BeginTabItem("调查笔记"))
         {
             DrawInvestigationNotes();
+            ImGui.EndTabItem();
+        }
+
+        if (ImGui.BeginTabItem("成就"))
+        {
+            DrawAchievements();
             ImGui.EndTabItem();
         }
 
@@ -253,6 +262,155 @@ internal sealed class MainWindow : Window
         {
             statusText = $"标记调查笔记失败: {ex.Message}";
             LogHelper.Chat(statusText);
+        }
+    }
+
+    private void DrawAchievements()
+    {
+        ImGui.TextUnformatted("成就助手");
+        ImGui.Spacing();
+
+        DrawAchievementSectionHeader("显示与联动");
+        var showInFloating = config.ShowAchievementInFloatingWindow;
+        if (ImGui.Checkbox("显示到悬浮窗", ref showInFloating))
+        {
+            config.ShowAchievementInFloatingWindow = showInFloating;
+            config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("在悬浮窗中显示“送死”分区和送死坐标按钮。");
+
+        var respawnEnabled = config.AchievementRespawnNavigationEnabled;
+        ImGui.Spacing();
+        DrawAchievementSectionHeader("复活后行为");
+        if (ImGui.Checkbox("送死模式", ref respawnEnabled))
+        {
+            config.AchievementRespawnNavigationEnabled = respawnEnabled;
+            config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("复活后等待 vnavmesh 就绪，直接步行返回已记录坐标；不会自动寻路、上坐骑或传送。");
+
+        var achievementTargetBaseId = config.AchievementTargetBaseId <= int.MaxValue
+            ? (int)config.AchievementTargetBaseId
+            : 0;
+        ImGui.SetNextItemWidth(180f);
+        if (ImGui.InputInt("目标 BaseId##achievement_target", ref achievementTargetBaseId))
+        {
+            config.AchievementTargetBaseId = (uint)Math.Max(0, achievementTargetBaseId);
+            config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("距离送死坐标 8y 内时，自动选中最近的匹配对象；填 0 表示不自动选中。");
+
+        ImGui.Spacing();
+        DrawAchievementSectionHeader("悬浮窗成就提示");
+        ImGui.BeginDisabled(!config.ShowAchievementInFloatingWindow);
+        var showRescue = config.ShowRescueAchievementInFloatingWindow;
+        if (ImGui.Checkbox("显示救人成就到悬浮窗", ref showRescue))
+        {
+            config.ShowRescueAchievementInFloatingWindow = showRescue;
+            config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("在悬浮窗中显示当前地图对应的救人成就进度，需要先开启“显示到悬浮窗”。");
+        ImGui.EndDisabled();
+
+        ImGui.Spacing();
+        DrawAchievementSectionHeader("送死坐标");
+        if (config.HasAchievementDeathPoint)
+        {
+            ImGui.TextUnformatted($"{GetMapName(config.AchievementDeathMap)}");
+            ImGui.TextDisabled($"X {config.AchievementDeathX:F1}    Y {config.AchievementDeathY:F1}    Z {config.AchievementDeathZ:F1}");
+            if (ImGui.SmallButton("清除已记录坐标##achievement_death"))
+            {
+                config.HasAchievementDeathPoint = false;
+                config.Save();
+            }
+        }
+        else
+        {
+            ImGui.TextDisabled("未记录");
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("可在悬浮窗的“送死”分区中记录当前位置。");
+        }
+
+        ImGui.Spacing();
+        DrawAchievementSectionHeader("救人成就进度");
+        DrawRescueAchievementSection(showDebug: true);
+    }
+
+    private static void DrawAchievementSectionHeader(string label)
+    {
+        ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.55f, 0.78f, 1f, 1f));
+        ImGui.TextUnformatted(label);
+        ImGui.PopStyleColor();
+        ImGui.Separator();
+    }
+
+    private void DrawRescueAchievementSection(bool showDebug)
+    {
+        achievementProgress.Update(force: false);
+        var achievements = achievementProgress.Snapshot();
+
+        if (achievements.Count == 0)
+        {
+            ImGui.TextDisabled("暂无数据");
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("正在等待成就数据，或尚未找到对应的成就 ID。可使用下方工具扫描候选 ID。");
+        }
+        else
+        {
+            foreach (var info in achievements)
+            {
+                ImGui.TextUnformatted(info.Name);
+                if (info.Complete)
+                    ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.35f, 0.9f, 0.45f, 1f));
+                ImGui.SameLine();
+                ImGui.TextUnformatted(info.Complete ? "已完成" : $"{info.Current} / {info.Max}");
+                if (info.Complete)
+                    ImGui.PopStyleColor();
+                if (!info.Complete && info.Max > 0)
+                {
+                    var progress = Math.Clamp((float)info.Current / info.Max, 0f, 1f);
+                    ImGui.ProgressBar(progress, new Vector2(-1f, 8f), string.Empty);
+                }
+            }
+        }
+
+        if (showDebug)
+        {
+            ImGui.Spacing();
+            DrawAchievementSectionHeader("调试工具");
+            if (ImGui.SmallButton("扫描成就候选 ID##achievement_debug"))
+                DumpAchievementIdCandidates();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("扫描 Achievement 表，并将名称包含“船医”或“名医”的候选 ID 输出到调试区。");
+        }
+    }
+
+    private void DumpAchievementIdCandidates()
+    {
+        var found = new List<string>();
+        var sheet = DalamudApi.DataManager.GetExcelSheet<AchievementSheet>();
+        if (sheet != null)
+        {
+            foreach (var row in sheet)
+            {
+                var name = row.Name.ToString();
+                if (name.Contains("船医", StringComparison.Ordinal) || name.Contains("名医", StringComparison.Ordinal))
+                    found.Add($"{row.RowId}: {name}");
+            }
+        }
+
+        if (found.Count == 0)
+        {
+            statusText = "未找到包含“船医”或“名医”的成就。";
+        }
+        else
+        {
+            statusText = "成就候选:\n" + string.Join("\n", found);
+            LogHelper.Info(string.Join("\n", found));
         }
     }
 

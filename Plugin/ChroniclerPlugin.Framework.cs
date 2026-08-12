@@ -1,5 +1,6 @@
 using Dalamud.Plugin.Services;
 using Dalamud.Game.ClientState.Fates;
+using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.InstanceContent;
 using System.Numerics;
 
@@ -28,6 +29,9 @@ public sealed partial class ChroniclerPlugin
             }
 
             ProcessStandbyNavigation();
+            ProcessAchievementRespawnNavigation(currentMap);
+            ProcessActiveAchievementRespawnNavigation();
+            ProcessAchievementTargetSelection();
 
             if (Configuration.AutoDetectAppearances)
             {
@@ -39,6 +43,7 @@ public sealed partial class ChroniclerPlugin
                 return;
 
             UpdateAutoNavigation(currentMap);
+            achievementProgress.Update(force: false);
         }
         catch (Exception ex)
         {
@@ -596,6 +601,228 @@ public sealed partial class ChroniclerPlugin
         pendingStandbyNavUtc = null;
         pendingStandbyNavStartedUtc = null;
         pendingStandbyBaseCampUtc = null;
+    }
+
+    private void ProcessAchievementRespawnNavigation(ExpeditionMap? currentMap)
+    {
+        if (!Configuration.AchievementRespawnNavigationEnabled)
+        {
+            ClearPendingAchievementRespawnNavigation();
+            ClearActiveAchievementRespawnNavigation();
+            ClearPendingAchievementTargetSelection();
+            return;
+        }
+
+        var isDead = DalamudApi.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.Unconscious];
+        if (isDead)
+        {
+            achievementWasDead = true;
+            return;
+        }
+
+        if (achievementWasDead)
+        {
+            achievementWasDead = false;
+
+            if (Configuration.AutoNavigationEnabled)
+                return;
+
+            if (Configuration.HasAchievementDeathPoint
+                && currentMap == Configuration.AchievementDeathMap)
+            {
+                QueueAchievementRespawnNavigation(
+                    new Vector3(Configuration.AchievementDeathX, Configuration.AchievementDeathY, Configuration.AchievementDeathZ),
+                    "送死坐标");
+            }
+        }
+
+        if (!pendingAchievementRespawnTarget.HasValue)
+            return;
+
+        if (pendingAchievementRespawnStartedUtc.HasValue
+            && DateTime.UtcNow - pendingAchievementRespawnStartedUtc.Value > TimeSpan.FromSeconds(30))
+        {
+            LogHelper.Chat($"复活后前往{pendingAchievementRespawnLabel}超时，请确认 vnavmesh 已加载。", PluginMessageKind.Navigation);
+            ClearPendingAchievementRespawnNavigation();
+            return;
+        }
+
+        if (pendingAchievementRespawnStartedUtc.HasValue
+            && DateTime.UtcNow - pendingAchievementRespawnStartedUtc.Value < TimeSpan.FromSeconds(2))
+            return;
+
+        if (DalamudApi.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.BetweenAreas]
+            || DalamudApi.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.BetweenAreas51]
+            || DalamudApi.ObjectTable.LocalPlayer is not { IsDead: false }
+            || !vnav.IsReady)
+            return;
+
+        if (DateTime.UtcNow - lastAchievementRespawnNavigationAttemptUtc < TimeSpan.FromSeconds(2))
+            return;
+
+        var target = pendingAchievementRespawnTarget.Value;
+        var label = pendingAchievementRespawnLabel;
+        lastAchievementRespawnNavigationAttemptUtc = DateTime.UtcNow;
+        if (!vnav.NavigateRespawnDirect(target))
+            return;
+
+        ClearPendingAchievementRespawnNavigation();
+        activeAchievementRespawnTarget = target;
+        activeAchievementRespawnLastPosition = DalamudApi.ObjectTable.LocalPlayer?.Position ?? target;
+        activeAchievementRespawnStartedUtc = DateTime.UtcNow;
+        activeAchievementRespawnRetryCount = 0;
+        LogHelper.Chat($"复活成功，前往{label}。", PluginMessageKind.Navigation);
+
+        ProcessAchievementTargetSelection();
+    }
+
+    private void QueueAchievementRespawnNavigation(Vector3 target, string label)
+    {
+        pendingAchievementRespawnTarget = target;
+        pendingAchievementRespawnLabel = label;
+        pendingAchievementRespawnStartedUtc = DateTime.UtcNow;
+        lastAchievementRespawnNavigationAttemptUtc = DateTime.MinValue;
+    }
+
+    private void ClearPendingAchievementRespawnNavigation()
+    {
+        pendingAchievementRespawnTarget = null;
+        pendingAchievementRespawnLabel = string.Empty;
+        pendingAchievementRespawnStartedUtc = null;
+        lastAchievementRespawnNavigationAttemptUtc = DateTime.MinValue;
+    }
+
+    private void ProcessActiveAchievementRespawnNavigation()
+    {
+        if (!activeAchievementRespawnTarget.HasValue || !activeAchievementRespawnStartedUtc.HasValue)
+            return;
+
+        if (!Configuration.AchievementRespawnNavigationEnabled || Configuration.AutoNavigationEnabled)
+        {
+            ClearActiveAchievementRespawnNavigation();
+            return;
+        }
+
+        var player = DalamudApi.ObjectTable.LocalPlayer;
+        if (player is not { IsDead: false })
+            return;
+
+        var target = activeAchievementRespawnTarget.Value;
+        if (HorizontalDistance(player.Position, target) <= 4f)
+        {
+            if (Configuration.AchievementTargetBaseId != 0)
+            {
+                pendingAchievementSelectionPosition = target;
+                pendingAchievementSelectionStartedUtc = DateTime.UtcNow;
+            }
+            ClearActiveAchievementRespawnNavigation();
+            return;
+        }
+
+        if (DateTime.UtcNow - activeAchievementRespawnStartedUtc.Value < TimeSpan.FromSeconds(7))
+            return;
+
+        if (HorizontalDistance(player.Position, activeAchievementRespawnLastPosition) >= 2.5f)
+        {
+            activeAchievementRespawnLastPosition = player.Position;
+            activeAchievementRespawnStartedUtc = DateTime.UtcNow;
+            return;
+        }
+
+        if (activeAchievementRespawnRetryCount >= 3)
+        {
+            LogHelper.Chat("复活后步行导航多次未移动，已停止。", PluginMessageKind.Navigation);
+            ClearActiveAchievementRespawnNavigation();
+            return;
+        }
+
+        activeAchievementRespawnRetryCount++;
+        activeAchievementRespawnLastPosition = player.Position;
+        activeAchievementRespawnStartedUtc = DateTime.UtcNow;
+        LogHelper.Chat($"复活后步行导航未移动，重试 {activeAchievementRespawnRetryCount}/3。", PluginMessageKind.Navigation);
+        vnav.NavigateRespawnDirect(target);
+    }
+
+    private void ClearActiveAchievementRespawnNavigation()
+    {
+        activeAchievementRespawnTarget = null;
+        activeAchievementRespawnStartedUtc = null;
+        activeAchievementRespawnRetryCount = 0;
+    }
+
+    private void ProcessAchievementTargetSelection()
+    {
+        if (!pendingAchievementSelectionPosition.HasValue)
+            return;
+
+        if (pendingAchievementSelectionStartedUtc.HasValue
+            && DateTime.UtcNow - pendingAchievementSelectionStartedUtc.Value > TimeSpan.FromSeconds(45))
+        {
+            LogHelper.Chat($"到达坐标后未找到 BaseId={Configuration.AchievementTargetBaseId} 的可选中对象。", PluginMessageKind.Navigation);
+            ClearPendingAchievementTargetSelection();
+            return;
+        }
+
+        var player = DalamudApi.ObjectTable.LocalPlayer;
+        if (player == null || HorizontalDistance(player.Position, pendingAchievementSelectionPosition.Value) > 8f)
+            return;
+
+        var target = DalamudApi.ObjectTable
+            .Where(obj => obj != null
+                && obj.IsValid()
+                && obj.IsTargetable
+                && obj.BaseId == Configuration.AchievementTargetBaseId)
+            .OrderBy(obj => HorizontalDistance(player.Position, obj.Position))
+            .FirstOrDefault();
+        if (target == null)
+            return;
+
+        DalamudApi.TargetManager.Target = target;
+        LogHelper.Chat($"已选中 BaseId={Configuration.AchievementTargetBaseId}：{target.Name.TextValue}。", PluginMessageKind.Navigation);
+        TryUseAchievementRangedAction(player.ClassJob.RowId, target);
+        ClearPendingAchievementTargetSelection();
+    }
+
+    private static unsafe void TryUseAchievementRangedAction(uint jobId, Dalamud.Game.ClientState.Objects.Types.IGameObject target)
+    {
+        var (actionId, actionName) = jobId switch
+        {
+            35 => (16526u, "冲击"),      // 赤魔法师
+            25 => (141u, "火炎"),        // 黑魔法师
+            27 => (3579u, "毁荡"),       // 召唤师
+            42 => (34650u, "火炎之红"),  // 绘灵法师
+            24 => (119u, "飞石"),        // 白魔法师
+            40 => (24283u, "注药"),      // 贤者
+            28 => (25865u, "极炎法"),    // 学者
+            33 => (3596u, "凶星"),       // 占星术士
+            31 => (7412u, "热分裂弹"),   // 机工士
+            23 => (97u, "强力射击"),     // bard
+            38 => (15989u, "瀑泻"),       // 舞者
+            _ => (0u, string.Empty),
+        };
+        if (actionId == 0)
+        {
+            LogHelper.Chat("当前职业未配置成就远程技能，已仅选中目标。", PluginMessageKind.Navigation);
+            return;
+        }
+
+        var actionManager = ActionManager.Instance();
+        if (actionManager == null)
+        {
+            LogHelper.Chat($"无法释放{actionName}：ActionManager 不可用。", PluginMessageKind.Navigation);
+            return;
+        }
+
+        var used = actionManager->UseAction(ActionType.Action, actionId, target.GameObjectId);
+        LogHelper.Chat(used
+            ? $"已对 {target.Name.TextValue} 释放{actionName}。"
+            : $"无法对 {target.Name.TextValue} 释放{actionName}，请确认目标在射程内且技能可用。", PluginMessageKind.Navigation);
+    }
+
+    private void ClearPendingAchievementTargetSelection()
+    {
+        pendingAchievementSelectionPosition = null;
+        pendingAchievementSelectionStartedUtc = null;
     }
 
     private static Vector3 GetBaseCampPosition(ExpeditionMap map)

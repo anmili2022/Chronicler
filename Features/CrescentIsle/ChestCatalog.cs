@@ -7,18 +7,6 @@ internal sealed record WindTeleportPosition(string Name, Vector3 Position);
 
 internal static class ChestCatalog
 {
-    // Personal loot coffers reuse map chest SGB models but are not map treasure nodes.
-    private static readonly IReadOnlySet<uint> IgnoredLiveTreasureIds = new HashSet<uint>
-    {
-        1996,
-        2000,
-        2001,
-        2002,
-        2003,
-    };
-
-    public static bool ShouldDetectLiveTreasure(uint baseId) => !IgnoredLiveTreasureIds.Contains(baseId);
-
     public static readonly IReadOnlySet<int> FloatingIslandChestIds =
         new HashSet<int> { 2011, 2059, 2069, 2061, 2058 };
 
@@ -105,6 +93,16 @@ internal static class ChestCatalog
         new("风圈2-进", new(-830.44f, 96.54f, 550.18f)),
         new("风圈2-出", new(-905.23f, 157.80f, 633.99f)),
     ];
+
+    public static string GetLiveTreasureLabel(ExpeditionMap map, uint baseId)
+        => (map, baseId) switch
+        {
+            (ExpeditionMap.South, 1792) => "银宝箱",
+            (ExpeditionMap.South, 1853) => "铜宝箱",
+            (ExpeditionMap.North, 2006) => "银宝箱",
+            (ExpeditionMap.North, 2019) => "铜宝箱",
+            _ => string.Empty,
+        };
 
     public static IReadOnlyList<ChestPosition> Get(ExpeditionMap map)
         => map == ExpeditionMap.South ? South : North;

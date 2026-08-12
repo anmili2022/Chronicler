@@ -1,5 +1,6 @@
 using Dalamud.Plugin;
 using KamiToolKit;
+using System.Numerics;
 
 namespace Chronicler;
 
@@ -11,6 +12,7 @@ public sealed partial class ChroniclerPlugin : IDalamudPlugin
     private readonly FateAppearanceDetector appearanceDetector;
     private readonly CriticalEncounterDetector criticalEncounterDetector;
     private readonly CurrencyGainTracker currencyGainTracker;
+    private readonly AchievementProgressService achievementProgress;
     private readonly VnavService vnav;
     private readonly CrescentMapMarkerController mapMarkers;
     private readonly PluginUI ui;
@@ -31,6 +33,17 @@ public sealed partial class ChroniclerPlugin : IDalamudPlugin
     private bool pendingAutoReturnSawBetweenAreas;
     private int pendingAutoReturnRetryCount;
     private bool wasDead;
+    private bool achievementWasDead;
+    private Vector3? pendingAchievementRespawnTarget;
+    private string pendingAchievementRespawnLabel = string.Empty;
+    private DateTime? pendingAchievementRespawnStartedUtc;
+    private DateTime lastAchievementRespawnNavigationAttemptUtc = DateTime.MinValue;
+    private Vector3? pendingAchievementSelectionPosition;
+    private DateTime? pendingAchievementSelectionStartedUtc;
+    private Vector3? activeAchievementRespawnTarget;
+    private Vector3 activeAchievementRespawnLastPosition;
+    private DateTime? activeAchievementRespawnStartedUtc;
+    private int activeAchievementRespawnRetryCount;
     private DateTime? postReturnScanDueUtc;
     private bool autoNavWasEnabled;
     private bool autoIslandCycleActive;
@@ -57,9 +70,10 @@ public sealed partial class ChroniclerPlugin : IDalamudPlugin
         appearanceDetector = new FateAppearanceDetector(stateService);
         criticalEncounterDetector = new CriticalEncounterDetector(stateService);
         currencyGainTracker = new CurrencyGainTracker();
+        achievementProgress = new AchievementProgressService(Configuration);
         vnav = new VnavService(pluginInterface, Configuration);
         mapMarkers = new CrescentMapMarkerController(Configuration);
-        ui = new PluginUI(Configuration, stateService, vnav, currencyGainTracker, instancePopulationProvider, mapMarkers);
+        ui = new PluginUI(Configuration, stateService, vnav, currencyGainTracker, instancePopulationProvider, mapMarkers, achievementProgress);
 
         RegisterCommands();
         RegisterChatHandlers();
