@@ -220,7 +220,7 @@ internal sealed class FloatingStatusWindow : Window
                     ImGui.SameLine();
                     if (info.Complete)
                         ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.35f, 0.9f, 0.45f, 1f));
-                    ImGui.TextUnformatted($"{info.Name}: {(info.Complete ? "已完成" : $"{info.Current} / {info.Max}")}");
+                    ImGui.TextUnformatted($"{info.Name}: {(info.Complete ? "已完成" : info.Max > 0 ? $"{info.Current} / {info.Max}" : "读取中")}");
                     if (info.Complete)
                         ImGui.PopStyleColor();
                 }

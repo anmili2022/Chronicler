@@ -281,7 +281,6 @@ internal sealed class MainWindow : Window
             ImGui.SetTooltip("在悬浮窗中显示“送死”分区和送死坐标按钮。");
 
         var respawnEnabled = config.AchievementRespawnNavigationEnabled;
-        ImGui.Spacing();
         DrawAchievementSectionHeader("复活后行为");
         if (ImGui.Checkbox("送死模式", ref respawnEnabled))
         {
@@ -291,6 +290,7 @@ internal sealed class MainWindow : Window
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("复活后等待 vnavmesh 就绪，直接步行返回已记录坐标；不会自动寻路、上坐骑或传送。");
 
+        ImGui.SameLine();
         var achievementTargetBaseId = config.AchievementTargetBaseId <= int.MaxValue
             ? (int)config.AchievementTargetBaseId
             : 0;
@@ -336,7 +336,7 @@ internal sealed class MainWindow : Window
         }
 
         ImGui.Spacing();
-        DrawAchievementSectionHeader("救人成就进度");
+        DrawAchievementSectionHeader("成就进度");
         DrawRescueAchievementSection(showDebug: true);
     }
 
@@ -367,7 +367,7 @@ internal sealed class MainWindow : Window
                 if (info.Complete)
                     ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.35f, 0.9f, 0.45f, 1f));
                 ImGui.SameLine();
-                ImGui.TextUnformatted(info.Complete ? "已完成" : $"{info.Current} / {info.Max}");
+                ImGui.TextUnformatted(info.Complete ? "已完成" : info.Max > 0 ? $"{info.Current} / {info.Max}" : "读取中");
                 if (info.Complete)
                     ImGui.PopStyleColor();
                 if (!info.Complete && info.Max > 0)
@@ -398,14 +398,16 @@ internal sealed class MainWindow : Window
             foreach (var row in sheet)
             {
                 var name = row.Name.ToString();
-                if (name.Contains("船医", StringComparison.Ordinal) || name.Contains("名医", StringComparison.Ordinal))
+                if (name.Contains("船医", StringComparison.Ordinal)
+                    || name.Contains("名医", StringComparison.Ordinal)
+                    || name.Contains("过路圣人", StringComparison.Ordinal))
                     found.Add($"{row.RowId}: {name}");
             }
         }
 
         if (found.Count == 0)
         {
-            statusText = "未找到包含“船医”或“名医”的成就。";
+            statusText = "未找到包含“船医”、“名医”或“过路圣人”的成就。";
         }
         else
         {

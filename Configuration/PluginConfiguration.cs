@@ -10,11 +10,11 @@ public sealed class PluginConfiguration : IPluginConfiguration
     [NonSerialized]
     private IDalamudPluginInterface? pluginInterface;
 
-    public int Version { get; set; } = 13;
+    public int Version { get; set; } = 15;
     public bool Enabled = true;
     public bool ShowAchievementInFloatingWindow = false;
     public bool ShowRescueAchievementInFloatingWindow = false;
-    public bool AchievementRespawnNavigationEnabled = true;
+    public bool AchievementRespawnNavigationEnabled = false;
     public bool HasAchievementDeathPoint = false;
     public bool HasAchievementRescuePoint = false;
     public uint AchievementTargetBaseId = 0;
@@ -199,6 +199,13 @@ public sealed class PluginConfiguration : IPluginConfiguration
             Version = 13;
             Save();
         }
+
+        if (Version < 15)
+        {
+            Version = 15;
+            Save();
+        }
+
     }
 
     public void Save()
