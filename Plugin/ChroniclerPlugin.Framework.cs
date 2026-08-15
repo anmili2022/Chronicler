@@ -126,13 +126,17 @@ public sealed partial class ChroniclerPlugin
         if (!leaveByPlayers && !leaveByTime)
             return false;
 
+        if (!IsAtBaseCamp(currentMap.Value))
+            return false;
+
         var remainingTimeText = content != null ? FormatMinutesSeconds(content->ContentTimeLeft) : "--:--";
         var reason = leaveByPlayers && leaveByTime
             ? $"人数 {playerCount}<{Configuration.AutoIslandLeavePlayerThreshold} 且 任务剩余 {remainingTimeText}<{Configuration.AutoIslandLeaveTimeThresholdMinutes} 分钟"
             : leaveByPlayers
                 ? $"人数 {playerCount}<{Configuration.AutoIslandLeavePlayerThreshold}"
                 : $"任务剩余 {remainingTimeText}<{Configuration.AutoIslandLeaveTimeThresholdMinutes} 分钟";
-        vnav.Stop();        if (!DalamudApi.Commands.ProcessCommand("/pdr leaveduty"))
+        vnav.Stop();
+        if (!DalamudApi.Commands.ProcessCommand("/pdr leaveduty"))
         {
             LogHelper.Chat("自动进出岛: 未找到 /pdr leaveduty 命令，请确认 PDR 已安装并加载。", PluginMessageKind.AutoNavigation);
             autoIslandLeaveRequestedUtc = now;
@@ -843,8 +847,7 @@ public sealed partial class ChroniclerPlugin
         if (!playerPos.HasValue)
             return false;
 
-        var camp = GetBaseCampPosition(map);
-        if (HorizontalDistance(playerPos.Value, camp) <= 30f)
+        if (IsAtBaseCamp(map))
             return true;
 
         if (Configuration.HasAutoReturnStandbyPoint
@@ -856,5 +859,12 @@ public sealed partial class ChroniclerPlugin
         }
 
         return false;
+    }
+
+    private static bool IsAtBaseCamp(ExpeditionMap map)
+    {
+        var playerPos = DalamudApi.ObjectTable.LocalPlayer?.Position;
+        return playerPos.HasValue
+               && HorizontalDistance(playerPos.Value, GetBaseCampPosition(map)) <= 30f;
     }
 }
