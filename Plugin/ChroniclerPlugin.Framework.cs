@@ -468,6 +468,12 @@ public sealed partial class ChroniclerPlugin
         if (pendingAutoNavigationDueUtc.HasValue && DateTime.UtcNow < pendingAutoNavigationDueUtc.Value)
             return;
 
+        if (!string.IsNullOrWhiteSpace(activeAutoNavigationKey))
+        {
+            LogHelper.Chat($"切换自动目标: {activeAutoNavigationKey} -> {key}，停止当前导航。", PluginMessageKind.AutoNavigation);
+            vnav.Stop();
+        }
+
         ClearPendingAutoNavigation();
         ClearPendingStandbyNavigation();
         activeAutoNavigationKey = key;
