@@ -603,17 +603,19 @@ internal sealed class FloatingStatusWindow : Window
         return flags;
     }
 
-    private unsafe void DrawFlagNavButton(Vector3 pos, string id, uint? preferredShardId = null, float? randomRadius = null, bool dismountOnArrival = false, IReadOnlyList<BossRouteDto>? routes = null)
+    private unsafe bool DrawFlagNavButton(Vector3 pos, string id, uint? preferredShardId = null, float? randomRadius = null, bool dismountOnArrival = false, IReadOnlyList<BossRouteDto>? routes = null)
     {
-        if (vnav.IsReady)
+        if (!vnav.IsReady)
+            return false;
+
+        if (ImGui.SmallButton($"导航##{id}"))
         {
-            if (ImGui.SmallButton($"导航##{id}"))
-            {
-                if (config.ShowNavigationDebug)
-                    LogHelper.Chat($"开始导航到 ({pos.X:F1}, {pos.Y:F1}, {pos.Z:F1})", PluginMessageKind.NavigationDebug);
-                vnav.NavigateToTarget(pos, routes, preferredShardId, randomRadius, dismountOnArrival);
-            }
+            if (config.ShowNavigationDebug)
+                LogHelper.Chat($"开始导航到 ({pos.X:F1}, {pos.Y:F1}, {pos.Z:F1})", PluginMessageKind.NavigationDebug);
+            vnav.NavigateToTarget(pos, routes, preferredShardId, randomRadius, dismountOnArrival);
         }
+
+        return true;
     }
 
     private bool DrawCurrentFates()
@@ -664,7 +666,8 @@ internal sealed class FloatingStatusWindow : Window
             var bossRoutes = boss != null && currentMap.HasValue
                 ? RouteCatalog.GetRoutes(currentMap.Value, boss.Id, config)
                 : null;
-            DrawFlagNavButton(fate.Position, $"fate-{fate.FateId}", VnavService.GetPreferredShardIdForFate(fate.FateId), config.FateNavigationRandomOffset > 0 ? config.FateNavigationRandomOffset : null, dismountOnArrival: true, routes: bossRoutes);
+            if (!DrawFlagNavButton(fate.Position, $"fate-{fate.FateId}", VnavService.GetPreferredShardIdForFate(fate.FateId), config.FateNavigationRandomOffset > 0 ? config.FateNavigationRandomOffset : null, dismountOnArrival: true, routes: bossRoutes))
+                ImGui.NewLine();
         }
 
         return true;
@@ -732,7 +735,8 @@ internal sealed class FloatingStatusWindow : Window
             var ceRoutes = boss != null && currentMap.HasValue
                 ? RouteCatalog.GetRoutes(currentMap.Value, boss.Id, config)
                 : null;
-            DrawFlagNavButton(ev.MapMarker.Position, $"ce-{ev.DynamicEventId}", boss == null ? null : VnavService.GetPreferredShardIdForCriticalEncounter(currentMap!.Value, boss.Index), config.CeNavigationRandomOffset > 0 ? config.CeNavigationRandomOffset : null, dismountOnArrival: boss != null && VnavService.RollCriticalEncounterDismount(), routes: ceRoutes);
+            if (!DrawFlagNavButton(ev.MapMarker.Position, $"ce-{ev.DynamicEventId}", boss == null ? null : VnavService.GetPreferredShardIdForCriticalEncounter(currentMap!.Value, boss.Index), config.CeNavigationRandomOffset > 0 ? config.CeNavigationRandomOffset : null, dismountOnArrival: boss != null && VnavService.RollCriticalEncounterDismount(), routes: ceRoutes))
+                ImGui.NewLine();
         }
 
         return true;
